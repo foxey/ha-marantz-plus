@@ -1,0 +1,47 @@
+---
+# AppDaemon configuration for denon_avr_control.py
+denon_avr_control:
+  module: denon_avr_control
+  class: DenonAVRControl
+  media_player: media_player.marantz
+  host: 192.168.178.73
+  # port: 23              # Telnet port (default: 23)
+  # command_timeout: 1    # Seconds to wait for a command response
+  # power_on_delay: 3     # Seconds to wait after power-on before querying
+
+  # Channel mapping (below are the defaults — uncomment to customise).
+  # Each key is the full Denon command (e.g. CVFL, CVSW), so you can
+  # also add non-CV commands in the future.
+  # `id` becomes the input_number suffix: input_number.<media_player_id>_<id>
+  # `offset` is the protocol offset (almost always 50 for CV commands).
+  #
+  channels:
+    CVFL: { id: front_left_channel, offset: 50 }
+    CVFR: { id: front_right_channel, offset: 50 }
+    CVSL: { id: surround_left_channel, offset: 50 }
+    CVSR: { id: surround_right_channel, offset: 50 }
+    CVSW: { id: subwoofer_channel, offset: 50 }
+  #   CVC:   { id: center,          offset: 50 }
+  #
+  # To add more channels supported by your receiver (e.g. height speakers),
+  # consult the Denon AVR protocol documentation for the command codes
+  # and add them here.  For example:
+  #   CVSBL: { id: surround_back_left,  offset: 50 }
+  #   CVSBR: { id: surround_back_right, offset: 50 }
+  #   CVFHL: { id: front_height_left,   offset: 50 }
+  #   CVFHR: { id: front_height_right,  offset: 50 }
+#   denon_avr_controller:
+#   module: denon_avr
+#   class: DenonAVRController
+#   media_player: media_player.marantz
+#   host: 192.168.178.73
+
+# denon_avr_listener:
+#   module: denon_avr
+#   class: DenonAVRListener
+#   media_player: media_player.marantz
+#   host: 192.168.178.73
+
+# sandbox:
+#   module: sandbox
+#   class: Sandbox
