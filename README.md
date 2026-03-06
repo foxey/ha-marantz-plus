@@ -37,7 +37,7 @@ A custom Home Assistant integration for controlling Denon and Marantz AVR (Audio
 
 ### Manual Installation
 
-1. Download the latest release from the [releases page](https://github.com/yourusername/ha-marantz-plus/releases)
+1. Download the latest release from the [releases page](https://github.com/foxey/ha-marantz-plus/releases)
 2. Extract the `marantzplus` folder from the zip file
 3. Copy the `marantzplus` folder to your `custom_components` directory
 4. Restart Home Assistant
