@@ -139,18 +139,18 @@ class ChannelVolumeManager:
             event: Event type (should be "CV")
             parameter: Event parameter (e.g., "FL 50")
         """
-        from .const import CHANNEL_MAP
-        
-        # Validate this is for our zone
-        if zone != self.zone and zone != "ALL_ZONES":
-            return
-        
-        # Ignore telnet protocol messages
-        if parameter.strip() in ("END", ""):
-            return
-        
-        # Parse CV event parameter: "FL 50" or "FR 535"
         try:
+            from .const import CHANNEL_MAP
+            
+            # Validate this is for our zone
+            if zone != self.zone and zone != "ALL_ZONES":
+                return
+            
+            # Ignore telnet protocol messages
+            if parameter.strip() in ("END", ""):
+                return
+            
+            # Parse CV event parameter: "FL 50" or "FR 535"
             parts = parameter.strip().split()
             if len(parts) != 2:
                 _LOGGER.debug(
@@ -202,6 +202,14 @@ class ChannelVolumeManager:
         except (ValueError, IndexError) as err:
             _LOGGER.warning(
                 "Failed to parse CV event parameter '%s': %s",
+                parameter,
+                err,
+            )
+        except Exception as err:
+            _LOGGER.exception(
+                "Unexpected error in CV callback for zone %s, event %s, parameter '%s': %s",
+                zone,
+                event,
                 parameter,
                 err,
             )
