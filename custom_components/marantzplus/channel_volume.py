@@ -63,58 +63,6 @@ class ChannelVolumeManager:
         # Populated during async_setup
         self.entities: dict[str, object] = {}
 
-
-
-def protocol_to_db(protocol_value: str, offset: int = 50) -> float:
-    """Convert protocol value to dB.
-    
-    Args:
-        protocol_value: String from receiver (2-digit or 3-digit)
-        offset: Protocol offset (default 50, so 50 = 0.0 dB)
-        
-    Returns:
-        Volume in dB
-        
-    Examples:
-        "53" → +3.0 dB (53 - 50)
-        "535" → +3.5 dB (535 / 10 - 50)
-        "50" → 0.0 dB
-        "38" → -12.0 dB
-    """
-    protocol_value = protocol_value.strip()
-    raw = int(protocol_value)
-    if len(protocol_value) == 3:
-        # 3-digit: half dB step
-        return raw / 10 - offset
-    # 2-digit: whole dB step
-    return float(raw - offset)
-
-
-def db_to_protocol(db_value: float, offset: int = 50) -> str:
-    """Convert dB to protocol value.
-    
-    Args:
-        db_value: Volume in dB (-12.0 to +12.0)
-        offset: Protocol offset (default 50, so 0.0 dB = 50)
-        
-    Returns:
-        Protocol string (2-digit for whole dB, 3-digit for half dB)
-        
-    Examples:
-        +3.0 → "53" (whole dB)
-        +3.5 → "535" (half dB)
-        0.0 → "50"
-        -12.0 → "38"
-    """
-    if db_value % 1 == 0:
-        # Whole dB: 2-digit string
-        return str(int(db_value) + offset)
-    # Half dB: 3-digit string
-    return str(int((db_value + offset) * 10))
-
-
-
-
     async def async_send_cv_command(
         self,
         channel: str,
@@ -175,8 +123,6 @@ def db_to_protocol(db_value: float, offset: int = 50) -> str:
                 await writer.wait_closed()
             except Exception:
                 pass
-
-
 
     def _cv_callback(
         self,
@@ -254,8 +200,6 @@ def db_to_protocol(db_value: float, offset: int = 50) -> str:
                 err,
             )
 
-
-
     async def _get_supported_channels(self) -> list[str]:
         """Query receiver for supported channels.
         
@@ -326,6 +270,52 @@ def db_to_protocol(db_value: float, offset: int = 50) -> str:
         return entities
 
 
+def protocol_to_db(protocol_value: str, offset: int = 50) -> float:
+    """Convert protocol value to dB.
+    
+    Args:
+        protocol_value: String from receiver (2-digit or 3-digit)
+        offset: Protocol offset (default 50, so 50 = 0.0 dB)
+        
+    Returns:
+        Volume in dB
+        
+    Examples:
+        "53" → +3.0 dB (53 - 50)
+        "535" → +3.5 dB (535 / 10 - 50)
+        "50" → 0.0 dB
+        "38" → -12.0 dB
+    """
+    protocol_value = protocol_value.strip()
+    raw = int(protocol_value)
+    if len(protocol_value) == 3:
+        # 3-digit: half dB step
+        return raw / 10 - offset
+    # 2-digit: whole dB step
+    return float(raw - offset)
+
+
+def db_to_protocol(db_value: float, offset: int = 50) -> str:
+    """Convert dB to protocol value.
+    
+    Args:
+        db_value: Volume in dB (-12.0 to +12.0)
+        offset: Protocol offset (default 50, so 0.0 dB = 50)
+        
+    Returns:
+        Protocol string (2-digit for whole dB, 3-digit for half dB)
+        
+    Examples:
+        +3.0 → "53" (whole dB)
+        +3.5 → "535" (half dB)
+        0.0 → "50"
+        -12.0 → "38"
+    """
+    if db_value % 1 == 0:
+        # Whole dB: 2-digit string
+        return str(int(db_value) + offset)
+    # Half dB: 3-digit string
+    return str(int((db_value + offset) * 10))
 
 
 class ChannelVolumeNumber(NumberEntity):
