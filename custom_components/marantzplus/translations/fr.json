@@ -1,0 +1,76 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "L'appareil est déjà configuré",
+            "already_in_progress": "Le flux de configuration est déjà en cours",
+            "cannot_connect": "Échec de la connexion, veuillez réessayer. Débrancher et rebrancher les câbles d'alimentation et Ethernet peut aider",
+            "not_marantzplus_manufacturer": "Récepteur non compatible Marantz+, le fabricant découvert ne correspond pas",
+            "not_marantzplus_missing": "Récepteur non compatible Marantz+, informations de découverte incomplètes"
+        },
+        "error": {
+            "discovery_error": "Échec de la découverte d'un récepteur compatible Marantz+"
+        },
+        "flow_title": "{name}",
+        "step": {
+            "confirm": {
+                "description": "Veuillez confirmer l'ajout du récepteur"
+            },
+            "select": {
+                "data": {
+                    "select_host": "Adresse IP du récepteur"
+                },
+                "description": "Exécutez à nouveau la configuration si vous souhaitez connecter des récepteurs supplémentaires",
+                "title": "Sélectionnez le récepteur que vous souhaitez connecter"
+            },
+            "user": {
+                "data": {
+                    "host": "Adresse IP"
+                },
+                "data_description": {
+                    "host": "Laisser vide pour utiliser la découverte automatique"
+                },
+                "description": "Par défaut, cette intégration utilise une connexion Telnet à votre récepteur pour recevoir des mises à jour en temps réel. Une seule connexion Telnet à votre récepteur peut être établie à la fois. La connexion Telnet peut être désactivée après la configuration de l'intégration."
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "show_all_sources": "Afficher toutes les sources",
+                    "update_audyssey": "Mettre à jour les paramètres Audyssey",
+                    "use_telnet": "Utiliser la connexion Telnet",
+                    "zone2": "Configurer la Zone 2",
+                    "zone3": "Configurer la Zone 3"
+                },
+                "description": "Spécifier les paramètres optionnels"
+            }
+        }
+    },
+    "services": {
+        "get_command": {
+            "description": "Envoie une commande HTTP get générique.",
+            "fields": {
+                "command": {
+                    "description": "Point de terminaison de la commande, y compris les paramètres associés.",
+                    "name": "Commande"
+                }
+            },
+            "name": "Commande Get"
+        },
+        "set_dynamic_eq": {
+            "description": "Active ou désactive DynamicEQ.",
+            "fields": {
+                "dynamic_eq": {
+                    "description": "Vrai/Faux pour activer/désactiver.",
+                    "name": "Égaliseur dynamique"
+                }
+            },
+            "name": "Définir l'égaliseur dynamique"
+        },
+        "update_audyssey": {
+            "description": "Met à jour les paramètres Audyssey.",
+            "name": "Mettre à jour Audyssey"
+        }
+    }
+}
