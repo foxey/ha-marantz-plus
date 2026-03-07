@@ -1,14 +1,14 @@
 {
   "domain": "marantzplus",
   "name": "Marantz+",
-  "codeowners": [],
+  "codeowners": ["@foxey"],
   "config_flow": true,
-  "documentation": "https://github.com/yourusername/ha-marantz-plus",
+  "documentation": "https://github.com/foxey/ha-marantz-plus",
   "integration_type": "device",
+  "issue_tracker": "https://github.com/foxey/ha-marantz-plus/issues",
   "iot_class": "local_push",
   "loggers": ["marantzplus"],
-  "requirements": ["denonavr==1.2.0"],
-  "version": "0.1.0",
+  "requirements": ["denonavr==1.2.0", "telnetlib3==2.0.4"],
   "ssdp": [
     {
       "deviceType": "urn:schemas-upnp-org:device:MediaRenderer:1",
@@ -58,5 +58,6 @@
       "deviceType": "urn:schemas-denon-com:device:AiosDevice:1",
       "manufacturer": "Marantz"
     }
-  ]
+  ],
+    "version": "0.1.0"
 }
