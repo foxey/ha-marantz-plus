@@ -1,4 +1,5 @@
-"""Channel volume management for Marantz+ integration.
+"""
+Channel volume management for Marantz+ integration.
 
 This module provides the ChannelVolumeManager class for managing individual
 speaker channel volume controls through Home Assistant number entities.
@@ -6,23 +7,33 @@ speaker channel volume controls through Home Assistant number entities.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
 from homeassistant.components.number import NumberEntity
-from homeassistant.core import HomeAssistant
 
-from .const import CHANNEL_MAP
+from .const import (
+    CHANNEL_MAP,
+    CHANNEL_VOLUME_STEP_DB,
+    CV_TELNET_PORT,
+    CV_TELNET_TIMEOUT,
+    MAX_CHANNEL_VOLUME_DB,
+    MIN_CHANNEL_VOLUME_DB,
+    ZONE_PREFIXES,
+)
 
 if TYPE_CHECKING:
     from denonavr import DenonAVR
+    from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class ChannelVolumeManager:
-    """Manages channel volume entities and communication with the receiver.
-    
+    """
+    Manages channel volume entities and communication with the receiver.
+
     This class coordinates channel volume functionality by:
     - Creating and managing ChannelVolumeNumber entities
     - Sending CV commands via short-lived telnet connections
@@ -36,29 +47,27 @@ class ChannelVolumeManager:
         zone: str,
         hass: HomeAssistant,
     ) -> None:
-        """Initialize the channel volume manager.
-        
+        """
+        Initialize the channel volume manager.
+
         Args:
             receiver: DenonAVR instance for communication with the receiver
             zone: Zone name (Main, Zone2, or Zone3)
             hass: Home Assistant instance
+
         """
         self.receiver = receiver
         self.zone = zone
         self.hass = hass
-        
+
         # Initialize pending counters for all channels to 0
         # Tracks expected CV events to prevent feedback loops
-        self.pending_counters: dict[str, int] = {
-            channel: 0 for channel in CHANNEL_MAP
-        }
-        
+        self.pending_counters: dict[str, int] = dict.fromkeys(CHANNEL_MAP, 0)
+
         # Initialize channel volumes for state tracking
         # None indicates value not yet received from receiver
-        self.channel_volumes: dict[str, float | None] = {
-            channel: None for channel in CHANNEL_MAP
-        }
-        
+        self.channel_volumes: dict[str, float | None] = dict.fromkeys(CHANNEL_MAP)
+
         # Store entity references for updates
         # Populated during async_setup
         self.entities: dict[str, object] = {}
@@ -68,63 +77,63 @@ class ChannelVolumeManager:
         channel: str,
         value: float,
     ) -> None:
-        """Send a channel volume command to the receiver.
-        
+        """
+        Send a channel volume command to the receiver.
+
         Args:
             channel: Channel code (FL, FR, C, SL, SR, SW)
             value: Volume in dB (-12.0 to +12.0)
+
         """
-        import asyncio
-        from .const import ZONE_PREFIXES, CV_TELNET_TIMEOUT, CV_TELNET_PORT
-        
         # Increment pending counter before sending
         self.pending_counters[channel] += 1
-        
+
         # Format CV command with zone prefix
         zone_prefix = ZONE_PREFIXES.get(self.zone, "")
         protocol_value = db_to_protocol(value)
         command = f"{zone_prefix}CV{channel} {protocol_value}\r"
-        
-        reader = None
+
+        _reader = None
         writer = None
         try:
             # Create short-lived telnet connection using asyncio streams
-            reader, writer = await asyncio.wait_for(
+            _reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(
                     self.receiver.host,
                     CV_TELNET_PORT,
                 ),
                 timeout=CV_TELNET_TIMEOUT,
             )
-            
+
             # Send CV command
             writer.write(command.encode("ascii"))
             await writer.drain()
-            
+
             _LOGGER.debug(
                 "Sent CV command to %s: %s",
                 self.receiver.host,
                 command.strip(),
             )
-            
-        except (asyncio.TimeoutError, OSError, ConnectionError) as err:
-            _LOGGER.error(
-                "Failed to send CV command to %s for channel %s: %s",
+
+        except (TimeoutError, OSError, ConnectionError):
+            _LOGGER.exception(
+                "Failed to send CV command to %s for channel %s",
                 self.receiver.host,
                 channel,
-                err,
             )
             # Decrement counter on error
             self.pending_counters[channel] -= 1
-            
+
         finally:
             # Close connection if it was established
             if writer is not None:
                 try:
                     writer.close()
                     await writer.wait_closed()
-                except Exception:
-                    pass
+                except OSError:
+                    _LOGGER.debug("Error closing telnet connection")
+                except Exception:  # noqa: BLE001
+                    _LOGGER.debug("Unexpected error closing telnet connection")
 
     def _cv_callback(
         self,
@@ -132,36 +141,39 @@ class ChannelVolumeManager:
         event: str,
         parameter: str,
     ) -> None:
-        """Handle CV events from the persistent telnet connection.
-        
+        """
+        Handle CV events from the persistent telnet connection.
+
         Args:
             zone: Zone identifier (Main, Zone2, Zone3, or ALL_ZONES)
             event: Event type (should be "CV")
             parameter: Event parameter (e.g., "FL 50")
+
         """
+        # Expected parts count for CV event parameter
+        expected_parts = 2
+
         try:
-            from .const import CHANNEL_MAP
-            
             # Validate this is for our zone
-            if zone != self.zone and zone != "ALL_ZONES":
+            if zone not in (self.zone, "ALL_ZONES"):
                 return
-            
+
             # Ignore telnet protocol messages
             if parameter.strip() in ("END", ""):
                 return
-            
+
             # Parse CV event parameter: "FL 50" or "FR 535"
             parts = parameter.strip().split()
-            if len(parts) != 2:
+            if len(parts) != expected_parts:
                 _LOGGER.debug(
                     "Ignoring CV event with unexpected format: %s",
                     parameter,
                 )
                 return
-            
+
             channel_code = parts[0]
             protocol_value = parts[1]
-            
+
             # Validate channel code
             if channel_code not in CHANNEL_MAP:
                 _LOGGER.warning(
@@ -169,7 +181,7 @@ class ChannelVolumeManager:
                     channel_code,
                 )
                 return
-            
+
             # Check pending counter
             if self.pending_counters[channel_code] > 0:
                 # Decrement counter and skip entity update (feedback prevention)
@@ -180,13 +192,13 @@ class ChannelVolumeManager:
                     self.pending_counters[channel_code],
                 )
                 return
-            
+
             # Convert protocol value to dB
             db_value = protocol_to_db(protocol_value)
-            
+
             # Update channel volume state
             self.channel_volumes[channel_code] = db_value
-            
+
             # Update entity if it exists
             if channel_code in self.entities:
                 entity = self.entities[channel_code]
@@ -198,34 +210,33 @@ class ChannelVolumeManager:
                         channel_code,
                         db_value,
                     )
-            
+
         except (ValueError, IndexError) as err:
             _LOGGER.warning(
                 "Failed to parse CV event parameter '%s': %s",
                 parameter,
                 err,
             )
-        except Exception as err:
+        except Exception:
             _LOGGER.exception(
-                "Unexpected error in CV callback for zone %s, event %s, parameter '%s': %s",
+                "Unexpected error in CV callback for zone %s, event %s, parameter '%s'",
                 zone,
                 event,
                 parameter,
-                err,
             )
 
     async def _get_supported_channels(self) -> list[str]:
-        """Get all standard channels.
-        
+        """
+        Get all standard channels.
+
         Returns all standard channels. Entity availability will be managed
         dynamically based on whether the receiver actually reports values
         for each channel.
-        
+
         Returns:
             List of all standard channel codes (FL, FR, C, SL, SR, SW)
+
         """
-        from .const import CHANNEL_MAP
-        
         _LOGGER.debug(
             "Creating entities for all standard channels for %s zone %s",
             self.receiver.host,
@@ -233,59 +244,60 @@ class ChannelVolumeManager:
         )
         return list(CHANNEL_MAP.keys())
 
-    async def _query_initial_values(self) -> None:
+    async def _query_initial_values(self) -> None:  # noqa: PLR0912
         """Query receiver for initial channel values to determine availability."""
-        import asyncio
-        from .const import ZONE_PREFIXES, CV_TELNET_PORT, CV_TELNET_TIMEOUT
-        
+        # Expected parts count for CV response
+        expected_parts = 2
+
         # Build CV? query command with zone prefix
         zone_prefix = ZONE_PREFIXES.get(self.zone, "")
         query_command = f"{zone_prefix}CV?\r"
-        
-        reader = None
+
+        _reader = None
         writer = None
         try:
             # Create short-lived telnet connection
-            reader, writer = await asyncio.wait_for(
+            _reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(
                     self.receiver.host,
                     CV_TELNET_PORT,
                 ),
                 timeout=CV_TELNET_TIMEOUT,
             )
-            
+
             # Send CV? query
             writer.write(query_command.encode("ascii"))
             await writer.drain()
-            
+
             # Read response with timeout
             response_data = await asyncio.wait_for(
-                reader.read(4096),
+                _reader.read(4096),
                 timeout=CV_TELNET_TIMEOUT,
             )
             response = response_data.decode("ascii", errors="replace")
-            
+
             # Parse response and update channel values
             # Response format: "CVFL 50\rCVFR 50\rCVC 48\r"
-            for line in response.split("\r"):
-                line = line.strip()
-                if not line:
+            for raw_line in response.split("\r"):
+                parsed_line = raw_line.strip()
+                if not parsed_line:
                     continue
-                
+
                 # Remove zone prefix if present
-                if line.startswith(zone_prefix + "CV"):
-                    line = line[len(zone_prefix) + 2:]  # Remove zone prefix and "CV"
-                elif line.startswith("CV"):
-                    line = line[2:]  # Remove "CV"
+                if parsed_line.startswith(zone_prefix + "CV"):
+                    # Remove zone prefix and "CV"
+                    parsed_line = parsed_line[len(zone_prefix) + 2 :]
+                elif parsed_line.startswith("CV"):
+                    parsed_line = parsed_line[2:]  # Remove "CV"
                 else:
                     continue
-                
+
                 # Parse "FL 50" or "FR 535"
-                parts = line.split()
-                if len(parts) >= 2:
+                parts = parsed_line.split()
+                if len(parts) >= expected_parts:
                     channel_code = parts[0]
                     protocol_value = parts[1]
-                    
+
                     if channel_code in self.channel_volumes:
                         try:
                             db_value = protocol_to_db(protocol_value)
@@ -298,14 +310,17 @@ class ChannelVolumeManager:
                             )
                         except (ValueError, IndexError) as err:
                             _LOGGER.warning(
-                                "Failed to parse initial CV value '%s' for channel %s: %s",
+                                "Failed to parse initial CV value '%s' for "
+                                "channel %s: %s",
                                 protocol_value,
                                 channel_code,
                                 err,
                             )
-            
+
             # Log which channels are available
-            available_channels = [ch for ch, val in self.channel_volumes.items() if val is not None]
+            available_channels = [
+                ch for ch, val in self.channel_volumes.items() if val is not None
+            ]
             if available_channels:
                 _LOGGER.info(
                     "Active channels for %s zone %s: %s",
@@ -319,43 +334,45 @@ class ChannelVolumeManager:
                     self.receiver.host,
                     self.zone,
                 )
-                
-        except (asyncio.TimeoutError, OSError, ConnectionError) as err:
+
+        except (TimeoutError, OSError, ConnectionError) as err:
             _LOGGER.warning(
                 "Failed to query initial channel values for %s zone %s: %s",
                 self.receiver.host,
                 self.zone,
                 err,
             )
-            
+
         finally:
             # Close connection if it was established
             if writer is not None:
                 try:
                     writer.close()
                     await writer.wait_closed()
-                except Exception:
-                    pass
+                except OSError:
+                    _LOGGER.debug("Error closing telnet connection")
+                except Exception:  # noqa: BLE001
+                    _LOGGER.debug("Unexpected error closing telnet connection")
 
     async def async_setup(
         self,
         device_info: dict,
         unique_id_base: str,
     ) -> list:
-        """Set up channel volume entities.
-        
+        """
+        Set up channel volume entities.
+
         Args:
             device_info: Device information for entity registration
             unique_id_base: Base unique ID for entity generation
-            
+
         Returns:
             List of ChannelVolumeNumber entities to add to Home Assistant
+
         """
-        from .const import CHANNEL_MAP
-        
         # Get supported channels
         supported_channels = await self._get_supported_channels()
-        
+
         # Create entities for each supported channel
         entities = []
         for channel in supported_channels:
@@ -368,12 +385,13 @@ class ChannelVolumeManager:
             )
             entities.append(entity)
             self.entities[channel] = entity
-        
+
         return entities
 
     async def async_initialize(self) -> None:
-        """Initialize channel volume manager after entities are added to HA.
-        
+        """
+        Initialize channel volume manager after entities are added to HA.
+
         This must be called after entities are added to Home Assistant to ensure
         the hass attribute is set before any callbacks are triggered.
         """
@@ -386,37 +404,41 @@ class ChannelVolumeManager:
                     self.receiver.host,
                     self.zone,
                 )
-        except Exception as err:
-            _LOGGER.warning(
-                "Failed to register CV callback for %s zone %s: %s",
+        except Exception:
+            _LOGGER.exception(
+                "Failed to register CV callback for %s zone %s",
                 self.receiver.host,
                 self.zone,
-                err,
             )
-        
+
         # Query initial channel values to determine availability
         await self._query_initial_values()
 
 
 def protocol_to_db(protocol_value: str, offset: int = 50) -> float:
-    """Convert protocol value to dB.
-    
+    """
+    Convert protocol value to dB.
+
     Args:
         protocol_value: String from receiver (2-digit or 3-digit)
         offset: Protocol offset (default 50, so 50 = 0.0 dB)
-        
+
     Returns:
         Volume in dB
-        
+
     Examples:
         "53" → +3.0 dB (53 - 50)
         "535" → +3.5 dB (535 / 10 - 50)
         "50" → 0.0 dB
         "38" → -12.0 dB
+
     """
+    # Length for 3-digit half-dB step values
+    half_db_length = 3
+
     protocol_value = protocol_value.strip()
     raw = int(protocol_value)
-    if len(protocol_value) == 3:
+    if len(protocol_value) == half_db_length:
         # 3-digit: half dB step
         return raw / 10 - offset
     # 2-digit: whole dB step
@@ -424,20 +446,22 @@ def protocol_to_db(protocol_value: str, offset: int = 50) -> float:
 
 
 def db_to_protocol(db_value: float, offset: int = 50) -> str:
-    """Convert dB to protocol value.
-    
+    """
+    Convert dB to protocol value.
+
     Args:
         db_value: Volume in dB (-12.0 to +12.0)
         offset: Protocol offset (default 50, so 0.0 dB = 50)
-        
+
     Returns:
         Protocol string (2-digit for whole dB, 3-digit for half dB)
-        
+
     Examples:
         +3.0 → "53" (whole dB)
         +3.5 → "535" (half dB)
         0.0 → "50"
         -12.0 → "38"
+
     """
     if db_value % 1 == 0:
         # Whole dB: 2-digit string
@@ -447,8 +471,9 @@ def db_to_protocol(db_value: float, offset: int = 50) -> str:
 
 
 class ChannelVolumeNumber(NumberEntity):
-    """Home Assistant number entity for individual channel volume control.
-    
+    """
+    Home Assistant number entity for individual channel volume control.
+
     Represents a single channel's volume as a number entity with proper
     bounds, step size, and unit of measurement.
     """
@@ -461,30 +486,36 @@ class ChannelVolumeNumber(NumberEntity):
         device_info: dict,
         unique_id_base: str,
     ) -> None:
-        """Initialize the channel volume number entity.
-        
+        """
+        Initialize the channel volume number entity.
+
         Args:
             manager: ChannelVolumeManager instance for command sending
             channel: Channel code (FL, FR, C, SL, SR, SW)
             zone: Zone name (Main, Zone2, or Zone3)
             device_info: Device information for entity registration
             unique_id_base: Base unique ID for entity generation
+
         """
         super().__init__()
-        
+
         self._manager = manager
         self._channel = channel
         self._zone = zone
-        
+
         # Generate entity name and ID
         channel_name = CHANNEL_MAP[channel].lower().replace(" ", "_")
         zone_suffix = "" if zone == "Main" else f"_{zone.lower()}"
-        
+
         # Entity attributes
-        self._attr_name = f"{zone if zone != 'Main' else ''} {CHANNEL_MAP[channel]} Volume".strip()
-        self._attr_unique_id = f"{unique_id_base}{zone_suffix}_channel_{channel_name}_volume"
+        self._attr_name = (
+            f"{zone if zone != 'Main' else ''} {CHANNEL_MAP[channel]} Volume".strip()
+        )
+        self._attr_unique_id = (
+            f"{unique_id_base}{zone_suffix}_channel_{channel_name}_volume"
+        )
         self._attr_device_info = device_info
-        
+
         # Set icon based on channel type
         if channel == "SW":
             self._attr_icon = "mdi:smoke-detector"
@@ -492,19 +523,20 @@ class ChannelVolumeNumber(NumberEntity):
             self._attr_icon = "mdi:speaker"
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set the channel volume.
-        
+        """
+        Set the channel volume.
+
         Args:
             value: Volume in dB (-12.0 to +12.0)
+
         """
         try:
             await self._manager.async_send_cv_command(self._channel, value)
-        except Exception as err:
-            _LOGGER.error(
-                "Failed to set channel %s volume to %.1f dB: %s",
+        except Exception:
+            _LOGGER.exception(
+                "Failed to set channel %s volume to %.1f dB",
                 self._channel,
                 value,
-                err,
             )
 
     @property
@@ -514,8 +546,9 @@ class ChannelVolumeNumber(NumberEntity):
 
     @property
     def available(self) -> bool:
-        """Return True if entity is available.
-        
+        """
+        Return True if entity is available.
+
         A channel is considered available if we've received at least one
         CV event for it from the receiver.
         """
@@ -524,19 +557,16 @@ class ChannelVolumeNumber(NumberEntity):
     @property
     def native_min_value(self) -> float:
         """Return minimum volume (-12.0 dB)."""
-        from .const import MIN_CHANNEL_VOLUME_DB
         return MIN_CHANNEL_VOLUME_DB
 
     @property
     def native_max_value(self) -> float:
         """Return maximum volume (+12.0 dB)."""
-        from .const import MAX_CHANNEL_VOLUME_DB
         return MAX_CHANNEL_VOLUME_DB
 
     @property
     def native_step(self) -> float:
         """Return volume step size (0.5 dB)."""
-        from .const import CHANNEL_VOLUME_STEP_DB
         return CHANNEL_VOLUME_STEP_DB
 
     @property

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import denonavr
@@ -25,7 +25,6 @@ from homeassistant.helpers.service_info.ssdp import (
     SsdpServiceInfo,
 )
 
-from . import DenonavrConfigEntry
 from .const import (
     CONF_MANUFACTURER,
     CONF_SERIAL_NUMBER,
@@ -43,6 +42,9 @@ from .const import (
     DOMAIN,
 )
 from .receiver import ConnectDenonAVR
+
+if TYPE_CHECKING:
+    from . import DenonavrConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -117,7 +119,7 @@ class DenonAvrFlowHandler(ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(
-        config_entry: DenonavrConfigEntry,
+        config_entry: DenonavrConfigEntry,  # noqa: ARG004
     ) -> OptionsFlowHandler:
         """Get the options flow."""
         return OptionsFlowHandler()
@@ -181,10 +183,13 @@ class DenonAvrFlowHandler(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="confirm")
 
     async def async_step_connect(
-        self, user_input: dict[str, Any] | None = None
+        self,
+        user_input: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> ConfigFlowResult:
         """Connect to the receiver."""
-        assert self.host
+        if not self.host:
+            return self.async_abort(reason="cannot_connect")
+
         connect_denonavr = ConnectDenonAVR(
             self.host,
             self.timeout,
@@ -203,7 +208,8 @@ class DenonAvrFlowHandler(ConfigFlow, domain=DOMAIN):
         if not success:
             return self.async_abort(reason="cannot_connect")
         receiver = connect_denonavr.receiver
-        assert receiver
+        if not receiver:
+            return self.async_abort(reason="cannot_connect")
 
         if not self.serial_number:
             self.serial_number = receiver.serial_number
@@ -261,7 +267,8 @@ class DenonAvrFlowHandler(ConfigFlow, domain=DOMAIN):
 
         self.model_name = discovery_info.upnp[ATTR_UPNP_MODEL_NAME].replace("*", "")
         self.serial_number = discovery_info.upnp[ATTR_UPNP_SERIAL]
-        assert discovery_info.ssdp_location is not None
+        if not discovery_info.ssdp_location:
+            return self.async_abort(reason="not_denonavr_missing")
         self.host = urlparse(discovery_info.ssdp_location).hostname
 
         if self.model_name in IGNORED_MODELS:

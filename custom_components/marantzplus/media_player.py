@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable, Coroutine
 from datetime import timedelta
 from functools import wraps
-from typing import Any, Concatenate
+from typing import TYPE_CHECKING, Any, Concatenate
 
 import voluptuous as vol
-from denonavr import DenonAVR
 from denonavr.const import (
     ALL_TELNET_EVENTS,
     ALL_ZONES,
@@ -35,13 +33,10 @@ from homeassistant.components.media_player import (
     MediaType,
 )
 from homeassistant.const import ATTR_COMMAND, CONF_HOST, CONF_MODEL, CONF_TYPE
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from . import DenonavrConfigEntry
 from .const import (
     CONF_MANUFACTURER,
     CONF_SERIAL_NUMBER,
@@ -49,6 +44,15 @@ from .const import (
     DEFAULT_UPDATE_AUDYSSEY,
     DOMAIN,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Coroutine
+
+    from denonavr import DenonAVR
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+    from . import DenonavrConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -107,7 +111,7 @@ DENON_STATE_MAPPING = {
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    hass: HomeAssistant,  # noqa: ARG001
     config_entry: DenonavrConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
@@ -216,12 +220,11 @@ def async_log_errors[DenonDeviceT: DenonDevice, **P, R](
                     self._receiver.host,
                 )
                 self._attr_available = False
-        except AvrCommandError as err:
+        except AvrCommandError:
             available = False
-            _LOGGER.error(
-                "Command %s failed with error: %s",
+            _LOGGER.exception(
+                "Command %s failed with error",
                 func.__name__,
-                err,
             )
         except DenonAvrError:
             available = False
@@ -252,11 +255,13 @@ class DenonDevice(MediaPlayerEntity):
         receiver: DenonAVR,
         unique_id: str,
         config_entry: DenonavrConfigEntry,
-        update_audyssey: bool,
+        update_audyssey: bool,  # noqa: FBT001
     ) -> None:
         """Initialize the device."""
         self._attr_unique_id = unique_id
-        assert config_entry.unique_id
+        if not config_entry.unique_id:
+            msg = "Config entry must have a unique_id"
+            raise ValueError(msg)
         self._attr_device_info = DeviceInfo(
             configuration_url=f"http://{config_entry.data[CONF_HOST]}/",
             hw_version=config_entry.data[CONF_TYPE],
@@ -277,13 +282,14 @@ class DenonDevice(MediaPlayerEntity):
 
     def _telnet_callback(self, zone: str, event: str, parameter: str) -> None:
         """Process a telnet command callback."""
-        # There are multiple checks implemented which reduce unnecessary updates of the ha state machine
+        # There are multiple checks implemented which reduce unnecessary
+        # updates of the ha state machine
         if zone not in (self._receiver.zone, ALL_ZONES):
             return
         if event not in TELNET_EVENTS:
             return
-        # Some updates trigger multiple events like one for artist and one for title for one change
-        # We skip every event except the last one
+        # Some updates trigger multiple events like one for artist and one for
+        # title for one change. We skip every event except the last one
         if event == "NSE" and not parameter.startswith("4"):
             return
         if event == "TA" and not parameter.startswith("ANNAME"):
@@ -473,20 +479,27 @@ class DenonDevice(MediaPlayerEntity):
     @async_log_errors
     async def async_set_volume_level(self, volume: float) -> None:
         """Set volume level, range 0..1."""
+        # Maximum volume constant
+        max_volume = 18
+
         # Volume has to be sent in a format like -50.0. Minimum is -80.0,
         # maximum is 18.0
         volume_denon = float((volume * 100) - 80)
-        if volume_denon > 18:
-            volume_denon = float(18)
+        if volume_denon > max_volume:
+            volume_denon = float(max_volume)
         await self._receiver.async_set_volume(volume_denon)
 
     @async_log_errors
-    async def async_mute_volume(self, mute: bool) -> None:
+    async def async_mute_volume(self, mute: bool) -> None:  # noqa: FBT001
         """Send mute command."""
         await self._receiver.async_mute(mute)
 
     @async_log_errors
-    async def async_get_command(self, command: str, **kwargs: Any) -> str:
+    async def async_get_command(
+        self,
+        command: str,
+        **kwargs: Any,  # noqa: ARG002
+    ) -> str:
         """Send generic command."""
         return await self._receiver.async_get_command(command)
 
@@ -496,7 +509,10 @@ class DenonDevice(MediaPlayerEntity):
         await self._receiver.async_update_audyssey()
 
     @async_log_errors
-    async def async_set_dynamic_eq(self, dynamic_eq: bool) -> None:
+    async def async_set_dynamic_eq(
+        self,
+        dynamic_eq: bool,  # noqa: FBT001
+    ) -> None:
         """Turn DynamicEQ on or off."""
         if dynamic_eq:
             await self._receiver.async_dynamic_eq_on()

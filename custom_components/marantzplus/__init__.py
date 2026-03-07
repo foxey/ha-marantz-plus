@@ -57,7 +57,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DenonavrConfigEntry) -> 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     use_telnet = entry.options.get(CONF_USE_TELNET, DEFAULT_USE_TELNET)
 
-    async def _async_disconnect(event: Event) -> None:
+    async def _async_disconnect(_event: Event) -> None:
         """Disconnect from Telnet."""
         if use_telnet and receiver is not None:
             await receiver.async_telnet_disconnect()

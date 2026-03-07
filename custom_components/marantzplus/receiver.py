@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import contextlib
 import logging
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
-import httpx
 from denonavr import DenonAVR
 from denonavr.exceptions import AvrProcessingError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    import httpx
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -16,15 +20,15 @@ _LOGGER = logging.getLogger(__name__)
 class ConnectDenonAVR:
     """Class to async connect to a DenonAVR receiver."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         host: str,
         timeout: float,
-        show_all_inputs: bool,
-        zone2: bool,
-        zone3: bool,
-        use_telnet: bool,
-        update_audyssey: bool,
+        show_all_inputs: bool,  # noqa: FBT001
+        zone2: bool,  # noqa: FBT001
+        zone3: bool,  # noqa: FBT001
+        use_telnet: bool,  # noqa: FBT001
+        update_audyssey: bool,  # noqa: FBT001
         async_client_getter: Callable[[], httpx.AsyncClient],
     ) -> None:
         """Initialize the class."""
@@ -50,7 +54,8 @@ class ConnectDenonAVR:
     async def async_connect_receiver(self) -> bool:
         """Connect to the DenonAVR receiver."""
         await self.async_init_receiver_class()
-        assert self._receiver
+        if not self._receiver:
+            return False
 
         if (
             self._receiver.manufacturer is None
