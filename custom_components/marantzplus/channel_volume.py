@@ -220,11 +220,92 @@ class ChannelVolumeManager:
         Returns:
             List of supported channel codes (FL, FR, C, SL, SR, SW)
         """
-        from .const import CHANNEL_MAP
+        import asyncio
+        from .const import CHANNEL_MAP, ZONE_PREFIXES, CV_TELNET_PORT, CV_TELNET_TIMEOUT
         
-        # For now, return all standard channels as fallback
-        # In the future, we could query the receiver to determine
-        # which channels are actually supported
+        # Build CV? query command with zone prefix
+        zone_prefix = ZONE_PREFIXES.get(self.zone, "")
+        query_command = f"{zone_prefix}CV?\r"
+        
+        reader = None
+        writer = None
+        try:
+            # Create short-lived telnet connection
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(
+                    self.receiver.host,
+                    CV_TELNET_PORT,
+                ),
+                timeout=CV_TELNET_TIMEOUT,
+            )
+            
+            # Send CV? query
+            writer.write(query_command.encode("ascii"))
+            await writer.drain()
+            
+            # Read response with timeout
+            response_data = await asyncio.wait_for(
+                reader.read(4096),
+                timeout=CV_TELNET_TIMEOUT,
+            )
+            response = response_data.decode("ascii", errors="replace")
+            
+            # Parse response to find active channels
+            # Response format: "CVFL 50\rCVFR 50\rCVC 48\r" (only active channels)
+            active_channels = []
+            for line in response.split("\r"):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Parse command: "CVFL 50" or "Z2CVFL 50"
+                # Remove zone prefix if present
+                if line.startswith(zone_prefix + "CV"):
+                    line = line[len(zone_prefix):]
+                
+                if line.startswith("CV") and len(line) > 2:
+                    # Extract channel code (e.g., "FL" from "CVFL 50")
+                    parts = line[2:].split()
+                    if parts:
+                        channel_code = parts[0].split()[0] if " " in parts[0] else parts[0]
+                        # Handle case where value is attached: "FL50" vs "FL 50"
+                        channel_code = "".join(c for c in channel_code if c.isalpha())
+                        if channel_code in CHANNEL_MAP:
+                            active_channels.append(channel_code)
+            
+            if active_channels:
+                _LOGGER.info(
+                    "Detected active channels for %s zone %s: %s",
+                    self.receiver.host,
+                    self.zone,
+                    ", ".join(active_channels),
+                )
+                return active_channels
+            else:
+                _LOGGER.warning(
+                    "No active channels detected for %s zone %s, using all standard channels",
+                    self.receiver.host,
+                    self.zone,
+                )
+                
+        except (asyncio.TimeoutError, OSError, ConnectionError) as err:
+            _LOGGER.warning(
+                "Failed to query active channels for %s zone %s: %s. Using all standard channels.",
+                self.receiver.host,
+                self.zone,
+                err,
+            )
+            
+        finally:
+            # Close connection if it was established
+            if writer is not None:
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+        
+        # Fallback: return all standard channels
         _LOGGER.debug(
             "Using all standard channels for %s zone %s",
             self.receiver.host,
