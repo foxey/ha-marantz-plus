@@ -215,13 +215,28 @@ class ChannelVolumeManager:
             )
 
     async def _get_supported_channels(self) -> list[str]:
-        """Query receiver for supported channels.
+        """Get all standard channels.
+        
+        Returns all standard channels. Entity availability will be managed
+        dynamically based on whether the receiver actually reports values
+        for each channel.
         
         Returns:
-            List of supported channel codes (FL, FR, C, SL, SR, SW)
+            List of all standard channel codes (FL, FR, C, SL, SR, SW)
         """
+        from .const import CHANNEL_MAP
+        
+        _LOGGER.debug(
+            "Creating entities for all standard channels for %s zone %s",
+            self.receiver.host,
+            self.zone,
+        )
+        return list(CHANNEL_MAP.keys())
+
+    async def _query_initial_values(self) -> None:
+        """Query receiver for initial channel values to determine availability."""
         import asyncio
-        from .const import CHANNEL_MAP, ZONE_PREFIXES, CV_TELNET_PORT, CV_TELNET_TIMEOUT
+        from .const import ZONE_PREFIXES, CV_TELNET_PORT, CV_TELNET_TIMEOUT
         
         # Build CV? query command with zone prefix
         zone_prefix = ZONE_PREFIXES.get(self.zone, "")
@@ -250,47 +265,64 @@ class ChannelVolumeManager:
             )
             response = response_data.decode("ascii", errors="replace")
             
-            # Parse response to find active channels
-            # Response format: "CVFL 50\rCVFR 50\rCVC 48\r" (only active channels)
-            active_channels = []
+            # Parse response and update channel values
+            # Response format: "CVFL 50\rCVFR 50\rCVC 48\r"
             for line in response.split("\r"):
                 line = line.strip()
                 if not line:
                     continue
                 
-                # Parse command: "CVFL 50" or "Z2CVFL 50"
                 # Remove zone prefix if present
                 if line.startswith(zone_prefix + "CV"):
-                    line = line[len(zone_prefix):]
+                    line = line[len(zone_prefix) + 2:]  # Remove zone prefix and "CV"
+                elif line.startswith("CV"):
+                    line = line[2:]  # Remove "CV"
+                else:
+                    continue
                 
-                if line.startswith("CV") and len(line) > 2:
-                    # Extract channel code (e.g., "FL" from "CVFL 50")
-                    parts = line[2:].split()
-                    if parts:
-                        channel_code = parts[0].split()[0] if " " in parts[0] else parts[0]
-                        # Handle case where value is attached: "FL50" vs "FL 50"
-                        channel_code = "".join(c for c in channel_code if c.isalpha())
-                        if channel_code in CHANNEL_MAP:
-                            active_channels.append(channel_code)
+                # Parse "FL 50" or "FR 535"
+                parts = line.split()
+                if len(parts) >= 2:
+                    channel_code = parts[0]
+                    protocol_value = parts[1]
+                    
+                    if channel_code in self.channel_volumes:
+                        try:
+                            db_value = protocol_to_db(protocol_value)
+                            self.channel_volumes[channel_code] = db_value
+                            _LOGGER.debug(
+                                "Initial value for %s channel %s: %.1f dB",
+                                self.zone,
+                                channel_code,
+                                db_value,
+                            )
+                        except (ValueError, IndexError) as err:
+                            _LOGGER.warning(
+                                "Failed to parse initial CV value '%s' for channel %s: %s",
+                                protocol_value,
+                                channel_code,
+                                err,
+                            )
             
-            if active_channels:
+            # Log which channels are available
+            available_channels = [ch for ch, val in self.channel_volumes.items() if val is not None]
+            if available_channels:
                 _LOGGER.info(
-                    "Detected active channels for %s zone %s: %s",
+                    "Active channels for %s zone %s: %s",
                     self.receiver.host,
                     self.zone,
-                    ", ".join(active_channels),
+                    ", ".join(available_channels),
                 )
-                return active_channels
             else:
                 _LOGGER.warning(
-                    "No active channels detected for %s zone %s, using all standard channels",
+                    "No active channels detected for %s zone %s",
                     self.receiver.host,
                     self.zone,
                 )
                 
         except (asyncio.TimeoutError, OSError, ConnectionError) as err:
             _LOGGER.warning(
-                "Failed to query active channels for %s zone %s: %s. Using all standard channels.",
+                "Failed to query initial channel values for %s zone %s: %s",
                 self.receiver.host,
                 self.zone,
                 err,
@@ -304,14 +336,6 @@ class ChannelVolumeManager:
                     await writer.wait_closed()
                 except Exception:
                     pass
-        
-        # Fallback: return all standard channels
-        _LOGGER.debug(
-            "Using all standard channels for %s zone %s",
-            self.receiver.host,
-            self.zone,
-        )
-        return list(CHANNEL_MAP.keys())
 
     async def async_setup(
         self,
@@ -361,6 +385,9 @@ class ChannelVolumeManager:
                 self.zone,
                 err,
             )
+        
+        # Query initial channel values to determine availability
+        await self._query_initial_values()
         
         return entities
 
@@ -472,6 +499,15 @@ class ChannelVolumeNumber(NumberEntity):
     def native_value(self) -> float | None:
         """Return the current channel volume in dB."""
         return self._manager.channel_volumes.get(self._channel)
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available.
+        
+        A channel is considered available if we've received at least one
+        CV event for it from the receiver.
+        """
+        return self._manager.channel_volumes.get(self._channel) is not None
 
     @property
     def native_min_value(self) -> float:
