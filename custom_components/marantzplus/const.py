@@ -17,3 +17,31 @@ DEFAULT_ZONE2 = False
 DEFAULT_ZONE3 = False
 DEFAULT_UPDATE_AUDYSSEY = False
 DEFAULT_USE_TELNET = False
+
+# Channel volume constants
+CHANNEL_MAP = {
+    "FL": "Front Left",
+    "FR": "Front Right",
+    "C": "Center",
+    "SL": "Surround Left",
+    "SR": "Surround Right",
+    "SW": "Subwoofer",
+}
+
+# Protocol value to dB conversion
+# Protocol: 38-62 (integer), Display: -12.0 to +12.0 dB (float)
+MIN_CHANNEL_VOLUME_DB = -12.0
+MAX_CHANNEL_VOLUME_DB = 12.0
+CHANNEL_VOLUME_STEP_DB = 0.5
+MIN_CHANNEL_VOLUME_PROTOCOL = 38
+MAX_CHANNEL_VOLUME_PROTOCOL = 62
+
+# Telnet connection timeout for CV commands
+CV_TELNET_TIMEOUT = 5.0
+
+# Zone prefixes for multi-zone command prefixes
+ZONE_PREFIXES = {
+    "Main": "",
+    "Zone2": "Z2",
+    "Zone3": "Z3",
+}

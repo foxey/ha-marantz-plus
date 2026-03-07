@@ -6,7 +6,7 @@ This implementation adds individual speaker channel volume control to the marant
 
 ## Tasks
 
-- [ ] 1. Add channel volume constants to const.py
+- [x] 1. Add channel volume constants to const.py
   - Add CHANNEL_MAP dictionary mapping channel codes to display names
   - Add MIN_CHANNEL_VOLUME_DB, MAX_CHANNEL_VOLUME_DB, CHANNEL_VOLUME_STEP_DB constants
   - Add MIN_CHANNEL_VOLUME_PROTOCOL, MAX_CHANNEL_VOLUME_PROTOCOL constants
@@ -15,7 +15,7 @@ This implementation adds individual speaker channel volume control to the marant
   - _Requirements: 1.2, 1.3, 1.4, 2.4, 7.3_
 
 - [ ] 2. Implement ChannelVolumeManager class
-  - [ ] 2.1 Create channel_volume.py with ChannelVolumeManager class structure
+  - [x] 2.1 Create channel_volume.py with ChannelVolumeManager class structure
     - Implement __init__ method accepting receiver, zone, and hass parameters
     - Initialize pending_counters dictionary for all channels
     - Initialize channel_volumes dictionary for state tracking
@@ -27,7 +27,7 @@ This implementation adds individual speaker channel volume control to the marant
     - **Property 10: Counter non-negativity invariant**
     - **Validates: Requirements 4.5**
   
-  - [ ] 2.3 Implement value conversion helper functions
+  - [x] 2.3 Implement value conversion helper functions
     - Implement protocol_to_db function for 2-digit and 3-digit protocol values
     - Implement db_to_protocol function with whole/half dB detection
     - Handle offset of 50 for protocol conversion
@@ -37,7 +37,7 @@ This implementation adds individual speaker channel volume control to the marant
     - **Property 3: Value conversion round trip**
     - **Validates: Requirements 2.4, 3.3**
   
-  - [ ] 2.5 Implement async_send_cv_command method
+  - [x] 2.5 Implement async_send_cv_command method
     - Increment pending counter for the channel before sending
     - Format CV command with zone prefix and channel code
     - Create short-lived telnet connection using receiver host and port
@@ -58,7 +58,7 @@ This implementation adds individual speaker channel volume control to the marant
     - Test counter recovery on send failure
     - _Requirements: 2.1, 2.2, 2.3, 7.3, 9.1, 9.2_
   
-  - [ ] 2.8 Implement _cv_callback method for CV event handling
+  - [x] 2.8 Implement _cv_callback method for CV event handling
     - Parse CV event parameter to extract channel code and protocol value
     - Validate channel code against CHANNEL_MAP
     - Check if pending counter for channel is greater than zero
@@ -84,7 +84,7 @@ This implementation adds individual speaker channel volume control to the marant
     - Test invalid event handling
     - _Requirements: 3.1, 3.4, 3.5, 7.4, 9.4_
   
-  - [ ] 2.12 Implement _get_supported_channels method
+  - [x] 2.12 Implement _get_supported_channels method
     - Query receiver for supported channels via telnet
     - Parse response to extract channel list
     - Return list of supported channel codes
@@ -98,7 +98,7 @@ This implementation adds individual speaker channel volume control to the marant
     - Test subset channel support
     - _Requirements: 8.1, 8.2, 8.4, 8.5_
   
-  - [ ] 2.14 Implement async_setup method
+  - [x] 2.14 Implement async_setup method
     - Call _get_supported_channels to determine available channels
     - Create ChannelVolumeNumber entity for each supported channel
     - Store entity references in entities dictionary
@@ -120,7 +120,7 @@ This implementation adds individual speaker channel volume control to the marant
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 4. Implement ChannelVolumeNumber entity class
-  - [ ] 4.1 Create ChannelVolumeNumber class in channel_volume.py
+  - [x] 4.1 Create ChannelVolumeNumber class in channel_volume.py
     - Inherit from NumberEntity
     - Implement __init__ with manager, channel, zone, device_info, unique_id_base parameters
     - Set entity attributes: name, unique_id, device_info
@@ -132,23 +132,23 @@ This implementation adds individual speaker channel volume control to the marant
     - **Property 2: Entity ID format**
     - **Validates: Requirements 1.5, 7.2**
   
-  - [ ] 4.3 Implement async_set_native_value method
+  - [x] 4.3 Implement async_set_native_value method
     - Call manager.async_send_cv_command with channel and value
     - Handle exceptions gracefully without propagating
     - _Requirements: 2.1_
   
-  - [ ] 4.4 Implement native_value property
+  - [x] 4.4 Implement native_value property
     - Return current channel volume from manager's channel_volumes dictionary
     - Return None if value not yet received
     - _Requirements: 3.1_
   
-  - [ ] 4.5 Implement native_min_value, native_max_value, native_step properties
+  - [x] 4.5 Implement native_min_value, native_max_value, native_step properties
     - Return MIN_CHANNEL_VOLUME_DB for min_value
     - Return MAX_CHANNEL_VOLUME_DB for max_value
     - Return CHANNEL_VOLUME_STEP_DB for step
     - _Requirements: 1.2, 1.3_
   
-  - [ ] 4.6 Implement native_unit_of_measurement property
+  - [x] 4.6 Implement native_unit_of_measurement property
     - Return "dB" as unit of measurement
     - _Requirements: 1.4_
   
@@ -163,11 +163,11 @@ This implementation adds individual speaker channel volume control to the marant
     - Test native_value returns correct state
     - _Requirements: 1.2, 1.3, 1.4, 1.5, 2.1, 3.1, 7.2_
 
-- [ ] 5. Checkpoint - Ensure ChannelVolumeNumber tests pass
+- [~] 5. Checkpoint - Ensure ChannelVolumeNumber tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 6. Create number platform setup
-  - [ ] 6.1 Create number.py with async_setup_entry function
+  - [x] 6.1 Create number.py with async_setup_entry function
     - Import ChannelVolumeManager and required Home Assistant types
     - Get receiver instances from config_entry runtime_data
     - Create ChannelVolumeManager for each zone in each receiver
@@ -184,7 +184,7 @@ This implementation adds individual speaker channel volume control to the marant
     - _Requirements: 7.1, 10.1, 10.2, 10.3_
 
 - [ ] 7. Integrate number platform into integration
-  - [ ] 7.1 Modify __init__.py to add number platform
+  - [x] 7.1 Modify __init__.py to add number platform
     - Add Platform.NUMBER to PLATFORMS list
     - Verify platform forwarding handles number platform automatically
     - _Requirements: 10.2_
@@ -213,7 +213,7 @@ This implementation adds individual speaker channel volume control to the marant
     - Test persistent telnet disconnection handling
     - _Requirements: 3.2, 5.1, 5.2, 6.4, 9.3_
 
-- [ ] 9. Final checkpoint - Ensure all tests pass
+- [~] 9. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 10. Integration and wiring
@@ -224,7 +224,7 @@ This implementation adds individual speaker channel volume control to the marant
     - Test no configuration changes required for existing users
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
   
-  - [ ] 10.2 Add error handling and logging
+  - [x] 10.2 Add error handling and logging
     - Add appropriate log levels (error, warning, debug) throughout
     - Ensure no unhandled exceptions can crash integration
     - Test exception safety across all error conditions
@@ -241,7 +241,7 @@ This implementation adds individual speaker channel volume control to the marant
     - Test connection parameter consistency
     - _Requirements: 2.1, 3.1, 4.1, 4.2, 4.3, 7.1, 7.3, 7.4, 10.4_
 
-- [ ] 11. Final checkpoint - Complete integration verification
+- [~] 11. Final checkpoint - Complete integration verification
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
