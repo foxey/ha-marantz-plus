@@ -86,6 +86,7 @@ class ChannelVolumeManager:
         protocol_value = db_to_protocol(value)
         command = f"{zone_prefix}CV{channel} {protocol_value}\r"
         
+        writer = None
         try:
             # Create short-lived telnet connection
             reader, writer = await asyncio.wait_for(
@@ -117,12 +118,13 @@ class ChannelVolumeManager:
             self.pending_counters[channel] -= 1
             
         finally:
-            # Close connection
-            try:
-                writer.close()
-                await writer.wait_closed()
-            except Exception:
-                pass
+            # Close connection if it was established
+            if writer is not None:
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                except Exception:
+                    pass
 
     def _cv_callback(
         self,
