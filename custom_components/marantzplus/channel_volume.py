@@ -367,7 +367,7 @@ class ChannelVolumeNumber(NumberEntity):
         zone_suffix = "" if zone == "Main" else f"_{zone.lower()}"
         
         # Entity attributes
-        self._attr_name = f"{zone if zone != 'Main' else ''} Channel {CHANNEL_MAP[channel]} Volume".strip()
+        self._attr_name = f"{zone if zone != 'Main' else ''} {CHANNEL_MAP[channel]} Volume".strip()
         self._attr_unique_id = f"{unique_id_base}{zone_suffix}_channel_{channel_name}_volume"
         self._attr_device_info = device_info
 
