@@ -24,6 +24,7 @@ async def async_setup_entry(
     """Set up channel volume number entities from a config entry."""
     receiver = config_entry.runtime_data
     entities = []
+    managers = []
     
     try:
         # Create ChannelVolumeManager for each zone
@@ -48,6 +49,7 @@ async def async_setup_entry(
                 zone=zone_name,
                 hass=hass,
             )
+            managers.append(manager)
             
             # Set up entities for this zone
             zone_entities = await manager.async_setup(
@@ -65,6 +67,10 @@ async def async_setup_entry(
         
         # Add all entities to Home Assistant
         async_add_entities(entities, update_before_add=False)
+        
+        # Initialize managers after entities are added to HA
+        for manager in managers:
+            await manager.async_initialize()
         
     except Exception:
         _LOGGER.exception(

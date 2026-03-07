@@ -369,6 +369,14 @@ class ChannelVolumeManager:
             entities.append(entity)
             self.entities[channel] = entity
         
+        return entities
+
+    async def async_initialize(self) -> None:
+        """Initialize channel volume manager after entities are added to HA.
+        
+        This must be called after entities are added to Home Assistant to ensure
+        the hass attribute is set before any callbacks are triggered.
+        """
         # Register CV callback with receiver's telnet callback system
         try:
             if hasattr(self.receiver, "register_callback"):
@@ -388,8 +396,6 @@ class ChannelVolumeManager:
         
         # Query initial channel values to determine availability
         await self._query_initial_values()
-        
-        return entities
 
 
 def protocol_to_db(protocol_value: str, offset: int = 50) -> float:
