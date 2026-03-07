@@ -36,7 +36,8 @@ CHANNEL_VOLUME_STEP_DB = 0.5
 MIN_CHANNEL_VOLUME_PROTOCOL = 38
 MAX_CHANNEL_VOLUME_PROTOCOL = 62
 
-# Telnet connection timeout for CV commands
+# Telnet connection settings for CV commands
+CV_TELNET_PORT = 23
 CV_TELNET_TIMEOUT = 5.0
 
 # Zone prefixes for multi-zone command prefixes

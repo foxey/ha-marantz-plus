@@ -75,7 +75,7 @@ class ChannelVolumeManager:
             value: Volume in dB (-12.0 to +12.0)
         """
         import asyncio
-        from .const import ZONE_PREFIXES, CV_TELNET_TIMEOUT
+        from .const import ZONE_PREFIXES, CV_TELNET_TIMEOUT, CV_TELNET_PORT
         
         # Increment pending counter before sending
         self.pending_counters[channel] += 1
@@ -92,7 +92,7 @@ class ChannelVolumeManager:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(
                     self.receiver.host,
-                    self.receiver.port,
+                    CV_TELNET_PORT,
                 ),
                 timeout=CV_TELNET_TIMEOUT,
             )
