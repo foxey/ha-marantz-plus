@@ -478,6 +478,12 @@ class ChannelVolumeNumber(NumberEntity):
         self._attr_name = f"{zone if zone != 'Main' else ''} {CHANNEL_MAP[channel]} Volume".strip()
         self._attr_unique_id = f"{unique_id_base}{zone_suffix}_channel_{channel_name}_volume"
         self._attr_device_info = device_info
+        
+        # Set icon based on channel type
+        if channel == "SW":
+            self._attr_icon = "mdi:smoke-detector"
+        else:
+            self._attr_icon = "mdi:speaker"
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the channel volume.
