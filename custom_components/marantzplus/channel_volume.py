@@ -145,12 +145,16 @@ class ChannelVolumeManager:
         if zone != self.zone and zone != "ALL_ZONES":
             return
         
+        # Ignore telnet protocol messages
+        if parameter.strip() in ("END", ""):
+            return
+        
         # Parse CV event parameter: "FL 50" or "FR 535"
         try:
             parts = parameter.strip().split()
             if len(parts) != 2:
-                _LOGGER.warning(
-                    "Invalid CV event format: %s",
+                _LOGGER.debug(
+                    "Ignoring CV event with unexpected format: %s",
                     parameter,
                 )
                 return
