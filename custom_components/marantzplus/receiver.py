@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import contextlib
 import logging
+from collections.abc import Callable
 
+import httpx
 from denonavr import DenonAVR
 from denonavr.exceptions import AvrProcessingError
-import httpx
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -7,9 +7,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 import denonavr
-from denonavr.exceptions import AvrNetworkError, AvrTimoutError
 import voluptuous as vol
-
+from denonavr.exceptions import AvrNetworkError, AvrTimoutError
 from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
@@ -240,7 +239,8 @@ class DenonAvrFlowHandler(ConfigFlow, domain=DOMAIN):
     async def async_step_ssdp(
         self, discovery_info: SsdpServiceInfo
     ) -> ConfigFlowResult:
-        """Handle a discovered Marantz+ compatible receiver.
+        """
+        Handle a discovered Marantz+ compatible receiver.
 
         This flow is triggered by the SSDP component. It will check if the
         host is already configured and delegate to the import step if not.

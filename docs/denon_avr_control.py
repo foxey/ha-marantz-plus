@@ -1,4 +1,5 @@
-"""Denon/Marantz AVR Channel Level Controller for AppDaemon.
+"""
+Denon/Marantz AVR Channel Level Controller for AppDaemon.
 
 Controls individual speaker channel levels on Denon/Marantz receivers via
 their telnet interface, exposing them as input_number helpers in Home Assistant.
@@ -72,18 +73,18 @@ import appdaemon.plugins.hass.hassapi as hass
 # and the numeric offset the receiver uses (0 dB = offset on the wire).
 # ---------------------------------------------------------------------------
 DEFAULT_CHANNELS: dict[str, dict[str, Any]] = {
-    "CVFL": {"id": "front_left",      "offset": 50},
-    "CVFR": {"id": "front_right",     "offset": 50},
-    "CVC":  {"id": "center",          "offset": 50},
-    "CVSL": {"id": "surround_left",   "offset": 50},
-    "CVSR": {"id": "surround_right",  "offset": 50},
-    "CVSW": {"id": "subwoofer",       "offset": 50},
+    "CVFL": {"id": "front_left", "offset": 50},
+    "CVFR": {"id": "front_right", "offset": 50},
+    "CVC": {"id": "center", "offset": 50},
+    "CVSL": {"id": "surround_left", "offset": 50},
+    "CVSR": {"id": "surround_right", "offset": 50},
+    "CVSW": {"id": "subwoofer", "offset": 50},
 }
 
 TELNET_PORT = 23
-COMMAND_TIMEOUT = 1        # seconds
-POWER_ON_DELAY = 3         # seconds
-RECONNECT_DELAY = 30       # seconds before retrying the persistent listener
+COMMAND_TIMEOUT = 1  # seconds
+POWER_ON_DELAY = 3  # seconds
+RECONNECT_DELAY = 30  # seconds before retrying the persistent listener
 LISTENER_RECV_SIZE = 4096  # bytes per recv() call
 
 
@@ -102,9 +103,7 @@ class DenonAVRControl(hass.Hass):
         self.command_timeout: float = float(
             self.args.get("command_timeout", COMMAND_TIMEOUT)
         )
-        self.power_on_delay: int = int(
-            self.args.get("power_on_delay", POWER_ON_DELAY)
-        )
+        self.power_on_delay: int = int(self.args.get("power_on_delay", POWER_ON_DELAY))
 
         # ---- Validate media_player entity ---------------------------------
         if not self.entity_exists(self.media_player):
@@ -176,7 +175,12 @@ class DenonAVRControl(hass.Hass):
     # -----------------------------------------------------------------------
 
     def _on_media_player_state(
-        self, entity: str, attribute: str, old: str, new: str, cb_args: dict,
+        self,
+        entity: str,
+        attribute: str,
+        old: str,
+        new: str,
+        cb_args: dict,
     ) -> None:
         self.log(f"Media player state: {old} -> {new}")
         if new == "on":
@@ -190,7 +194,12 @@ class DenonAVRControl(hass.Hass):
     # -----------------------------------------------------------------------
 
     def _on_slider_change(
-        self, entity_id: str, attribute: str, old: str, new: str, cb_args: dict,
+        self,
+        entity_id: str,
+        attribute: str,
+        old: str,
+        new: str,
+        cb_args: dict,
     ) -> None:
         # Ignore non-numeric states (e.g. "unavailable").
         try:
@@ -209,10 +218,7 @@ class DenonAVRControl(hass.Hass):
         if channel is None:
             return
 
-        cmd = (
-            f"{channel['command']} "
-            f"{self._format_value(value, channel['offset'])}"
-        )
+        cmd = f"{channel['command']} {self._format_value(value, channel['offset'])}"
         self.log(f"User changed {entity_id} -> {value} dB, sending: {cmd}")
         self._send_command(cmd)
 
@@ -289,7 +295,8 @@ class DenonAVRControl(hass.Hass):
         self._listener_thread = None
 
     def _listener_loop(self) -> None:
-        """Maintain a persistent connection and process real-time events.
+        """
+        Maintain a persistent connection and process real-time events.
 
         Runs in a daemon thread. The thread exits when ``_listener_stop``
         is set or when the receiver sends a PWSTANDBY message.
@@ -298,7 +305,8 @@ class DenonAVRControl(hass.Hass):
             sock: socket.socket | None = None
             try:
                 sock = socket.create_connection(
-                    (self.host, self.port), timeout=5,
+                    (self.host, self.port),
+                    timeout=5,
                 )
                 self.log(f"Listener connected to {self.host}:{self.port}")
                 # Ask for current channel levels on connect.
@@ -309,7 +317,7 @@ class DenonAVRControl(hass.Hass):
                     sock.settimeout(2.0)
                     try:
                         data = sock.recv(LISTENER_RECV_SIZE)
-                    except socket.timeout:
+                    except TimeoutError:
                         continue
                     if not data:
                         # Connection closed by the receiver.
@@ -332,8 +340,7 @@ class DenonAVRControl(hass.Hass):
             except Exception as exc:
                 if not self._listener_stop.is_set():
                     self.log(
-                        f"Listener error: {exc}; "
-                        f"retrying in {RECONNECT_DELAY}s",
+                        f"Listener error: {exc}; retrying in {RECONNECT_DELAY}s",
                         level="WARNING",
                     )
             finally:
@@ -386,14 +393,16 @@ class DenonAVRControl(hass.Hass):
     # -----------------------------------------------------------------------
 
     def _send_command(self, command: str) -> str:
-        """Send a command to the receiver and return the raw response.
+        """
+        Send a command to the receiver and return the raw response.
 
         Opens a new TCP connection, sends the command, reads until the
         receiver stops sending (timeout), and returns all received data.
         """
         try:
             sock = socket.create_connection(
-                (self.host, self.port), timeout=self.command_timeout,
+                (self.host, self.port),
+                timeout=self.command_timeout,
             )
         except OSError as exc:
             self.log(
@@ -412,7 +421,7 @@ class DenonAVRControl(hass.Hass):
                     if not chunk:
                         break
                     response += chunk
-                except socket.timeout:
+                except TimeoutError:
                     break
             return response.decode("ascii", errors="replace")
         except OSError as exc:
@@ -427,7 +436,8 @@ class DenonAVRControl(hass.Hass):
 
     @staticmethod
     def _parse_response(raw: str) -> dict[str, str]:
-        """Parse CR-delimited receiver output into a {command: parameter} dict.
+        """
+        Parse CR-delimited receiver output into a {command: parameter} dict.
 
         Example input:  "CVFL 53\\rCVFR 50\\rCVC 48\\r"
         Example output: {"CVFL": "53", "CVFR": "50", "CVC": "48"}
@@ -443,7 +453,8 @@ class DenonAVRControl(hass.Hass):
 
     @staticmethod
     def _parse_value(parameter: str, offset: int) -> float:
-        """Convert a receiver parameter string to a dB float.
+        """
+        Convert a receiver parameter string to a dB float.
 
         The receiver encodes values as:
           - 2-digit string for whole dB:   "53" → 53 − 50 = +3.0 dB
@@ -457,7 +468,8 @@ class DenonAVRControl(hass.Hass):
 
     @staticmethod
     def _format_value(value: float, offset: int) -> str:
-        """Convert a dB float to a receiver parameter string.
+        """
+        Convert a dB float to a receiver parameter string.
 
         Whole dB values produce 2-digit strings:  +3.0 → "53"
         Half dB values produce 3-digit strings:   +3.5 → "535"

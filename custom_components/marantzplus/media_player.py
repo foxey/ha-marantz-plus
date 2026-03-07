@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Coroutine
 from datetime import timedelta
 from functools import wraps
-import logging
 from typing import Any, Concatenate
 
+import voluptuous as vol
 from denonavr import DenonAVR
 from denonavr.const import (
     ALL_TELNET_EVENTS,
@@ -26,8 +27,6 @@ from denonavr.exceptions import (
     AvrTimoutError,
     DenonAvrError,
 )
-import voluptuous as vol
-
 from homeassistant.components.media_player import (
     MediaPlayerDeviceClass,
     MediaPlayerEntity,
@@ -37,7 +36,8 @@ from homeassistant.components.media_player import (
 )
 from homeassistant.const import ATTR_COMMAND, CONF_HOST, CONF_MODEL, CONF_TYPE
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv, entity_platform
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -155,10 +155,11 @@ async def async_setup_entry(
     async_add_entities(entities, update_before_add=True)
 
 
-def async_log_errors[_DenonDeviceT: DenonDevice, **_P, _R](
-    func: Callable[Concatenate[_DenonDeviceT, _P], Awaitable[_R]],
-) -> Callable[Concatenate[_DenonDeviceT, _P], Coroutine[Any, Any, _R | None]]:
-    """Log errors occurred when calling a Denon AVR receiver.
+def async_log_errors[DenonDeviceT: DenonDevice, **P, R](
+    func: Callable[Concatenate[DenonDeviceT, P], Awaitable[R]],
+) -> Callable[Concatenate[DenonDeviceT, P], Coroutine[Any, Any, R | None]]:
+    """
+    Log errors occurred when calling a Denon AVR receiver.
 
     Decorates methods of DenonDevice class.
     Declaration of staticmethod for this method is at the end of this class.
@@ -166,8 +167,8 @@ def async_log_errors[_DenonDeviceT: DenonDevice, **_P, _R](
 
     @wraps(func)
     async def wrapper(
-        self: _DenonDeviceT, *args: _P.args, **kwargs: _P.kwargs
-    ) -> _R | None:
+        self: DenonDeviceT, *args: P.args, **kwargs: P.kwargs
+    ) -> R | None:
         available = True
         try:
             return await func(self, *args, **kwargs)

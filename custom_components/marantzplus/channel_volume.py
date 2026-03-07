@@ -75,7 +75,6 @@ class ChannelVolumeManager:
             value: Volume in dB (-12.0 to +12.0)
         """
         import asyncio
-        import telnetlib3
         from .const import ZONE_PREFIXES, CV_TELNET_TIMEOUT
         
         # Increment pending counter before sending
@@ -86,11 +85,12 @@ class ChannelVolumeManager:
         protocol_value = db_to_protocol(value)
         command = f"{zone_prefix}CV{channel} {protocol_value}\r"
         
+        reader = None
         writer = None
         try:
-            # Create short-lived telnet connection
+            # Create short-lived telnet connection using asyncio streams
             reader, writer = await asyncio.wait_for(
-                telnetlib3.open_connection(
+                asyncio.open_connection(
                     self.receiver.host,
                     self.receiver.port,
                 ),
@@ -98,7 +98,7 @@ class ChannelVolumeManager:
             )
             
             # Send CV command
-            writer.write(command)
+            writer.write(command.encode("ascii"))
             await writer.drain()
             
             _LOGGER.debug(

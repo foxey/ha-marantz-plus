@@ -3,7 +3,7 @@
 A custom Home Assistant integration for controlling Denon and Marantz AVR (Audio/Video Receiver) network receivers. This integration extends the core `denonavr` integration with additional features and improvements.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
-[![GitHub Release](https://img.shields.io/github/release/yourusername/ha-marantz-plus.svg)](https://github.com/yourusername/ha-marantz-plus/releases)
+[![GitHub Release](https://img.shields.io/github/release/foxey/ha-marantz-plus.svg)](https://github.com/foxey/ha-marantz-plus/releases)
 
 ## Features
 
@@ -29,7 +29,7 @@ A custom Home Assistant integration for controlling Denon and Marantz AVR (Audio
 2. Click on "Integrations"
 3. Click the three dots in the top right corner
 4. Select "Custom repositories"
-5. Add this repository URL: `https://github.com/yourusername/ha-marantz-plus`
+5. Add this repository URL: `https://github.com/foxey/ha-marantz-plus`
 6. Select category "Integration"
 7. Click "Add"
 8. Find "Marantz+" in the integration list and click "Download"
@@ -113,7 +113,7 @@ target:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/ha-marantz-plus.git
+   git clone https://github.com/foxey/ha-marantz-plus.git
    cd ha-marantz-plus
    ```
 
@@ -168,7 +168,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 If you encounter any issues or have questions:
 
-- Check the [Issues](https://github.com/yourusername/ha-marantz-plus/issues) page
+- Check the [Issues](https://github.com/foxey/ha-marantz-plus/issues) page
 - Create a new issue with detailed information about your problem
 - Include Home Assistant logs and your receiver model
 
