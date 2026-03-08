@@ -277,8 +277,8 @@ class ChannelVolumeManager:
 
                 # Update all channel entities to reflect new availability
                 for entity in self.entities.values():
-                    if hasattr(entity, "async_write_ha_state"):
-                        entity.async_write_ha_state()
+                    if hasattr(entity, "async_schedule_update_ha_state"):
+                        entity.async_schedule_update_ha_state(force_refresh=True)
 
         except Exception:
             _LOGGER.exception(
