@@ -574,6 +574,9 @@ class ChannelVolumeNumber(NumberEntity):
     bounds, step size, and unit of measurement.
     """
 
+    # Enable periodic updates
+    _attr_should_poll = True
+
     def __init__(  # noqa: PLR0913
         self,
         manager: ChannelVolumeManager,
@@ -640,6 +643,16 @@ class ChannelVolumeNumber(NumberEntity):
                 self._channel,
                 value,
             )
+
+    async def async_update(self) -> None:
+        """
+        Update entity state.
+
+        This is called periodically by Home Assistant. We use it to check
+        if the receiver availability has changed and trigger a state update.
+        """
+        # The availability property will be re-evaluated when this completes
+        # No need to do anything here - just having this method enables polling
 
     @property
     def native_value(self) -> float | None:
