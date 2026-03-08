@@ -560,6 +560,8 @@ class ChannelVolumeNumber(NumberEntity):
                 "Cannot set channel %s volume: receiver is powered off",
                 self._channel,
             )
+            # Force UI to revert to actual value by triggering state update
+            self.async_write_ha_state()
             return
 
         try:
@@ -570,6 +572,8 @@ class ChannelVolumeNumber(NumberEntity):
                 self._channel,
                 value,
             )
+            # Force UI to revert to actual value on error
+            self.async_write_ha_state()
 
     @property
     def native_value(self) -> float | None:
