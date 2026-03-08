@@ -650,20 +650,29 @@ class ChannelVolumeNumber(NumberEntity):
         async_update to detect network issues. If it fails, we mark ourselves
         as unavailable.
         """
-        # Skip update if telnet is healthy (same logic as media player)
+        # If telnet is healthy, mark as available and skip HTTP update
         if (
             self._manager.receiver.telnet_connected
             and self._manager.receiver.telnet_healthy
         ):
+            # Telnet is working, so receiver is definitely available
+            if not self._manager.receiver_available:
+                _LOGGER.info(
+                    "Channel %s for %s zone %s is available again (telnet healthy)",
+                    self._channel,
+                    self._manager.receiver.host,
+                    self._manager.zone,
+                )
+                self._manager.receiver_available = True
             return
 
-        # Try to update receiver state - this will fail if network is down
+        # Try to update receiver state via HTTP - this will fail if network is down
         try:
             await self._manager.receiver.async_update()
             # If update succeeds and we were unavailable, mark as available
             if not self._manager.receiver_available:
                 _LOGGER.info(
-                    "Channel %s for %s zone %s is available again",
+                    "Channel %s for %s zone %s is available again (HTTP)",
                     self._channel,
                     self._manager.receiver.host,
                     self._manager.zone,
