@@ -8,6 +8,7 @@ speaker channel volume controls through Home Assistant number entities.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from typing import TYPE_CHECKING
 
@@ -648,11 +649,22 @@ class ChannelVolumeNumber(NumberEntity):
         """
         Update entity state.
 
-        This is called periodically by Home Assistant. We use it to check
-        if the receiver availability has changed and trigger a state update.
+        This is called periodically by Home Assistant. We call the receiver's
+        async_update to detect network issues. If it fails, the receiver's
+        state will be set appropriately and our available property will reflect that.
         """
-        # The availability property will be re-evaluated when this completes
-        # No need to do anything here - just having this method enables polling
+        # Skip update if telnet is healthy (same logic as media player)
+        if (
+            self._manager.receiver.telnet_connected
+            and self._manager.receiver.telnet_healthy
+        ):
+            return
+
+        # Try to update receiver state - this will fail if network is down
+        # Errors are handled by the receiver object which sets state to None
+        # Our available property will then return False
+        with contextlib.suppress(Exception):
+            await self._manager.receiver.async_update()
 
     @property
     def native_value(self) -> float | None:
@@ -668,12 +680,17 @@ class ChannelVolumeNumber(NumberEntity):
         1. The receiver is available (responding to network requests)
         2. The receiver is powered on
         3. We've received at least one CV event for it from the receiver
+
+        Note: We rely on the receiver object's state which is updated by
+        the media player entity's polling mechanism.
         """
-        return (
-            self._manager.is_receiver_available
-            and self._manager.is_receiver_powered_on
-            and self._manager.channel_volumes.get(self._channel) is not None
-        )
+        # Check if receiver state indicates it's reachable
+        # When network is down, the denonavr library should set state to None
+        receiver_reachable = self._manager.receiver.state is not None
+        receiver_powered_on = self._manager.is_receiver_powered_on
+        has_value = self._manager.channel_volumes.get(self._channel) is not None
+
+        return receiver_reachable and receiver_powered_on and has_value
 
     @property
     def native_min_value(self) -> float:
