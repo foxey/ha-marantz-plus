@@ -184,7 +184,7 @@ class DenonAvrFlowHandler(ConfigFlow, domain=DOMAIN):
 
     async def async_step_connect(
         self,
-        user_input: dict[str, Any] | None = None,  # noqa: ARG002
+        user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Connect to the receiver."""
         if not self.host:

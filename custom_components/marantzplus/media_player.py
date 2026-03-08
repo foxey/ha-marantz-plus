@@ -498,7 +498,7 @@ class DenonDevice(MediaPlayerEntity):
     async def async_get_command(
         self,
         command: str,
-        **kwargs: Any,  # noqa: ARG002
+        **kwargs: Any,
     ) -> str:
         """Send generic command."""
         return await self._receiver.async_get_command(command)

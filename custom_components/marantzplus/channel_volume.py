@@ -11,11 +11,8 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
-from homeassistant.components.media_player import MediaPlayerState
+from denonavr.const import POWER_ON
 from homeassistant.components.number import NumberEntity
-from homeassistant.const import STATE_OFF, STATE_UNAVAILABLE
-from homeassistant.core import callback
-from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
     CHANNEL_MAP,
@@ -29,7 +26,7 @@ from .const import (
 
 if TYPE_CHECKING:
     from denonavr import DenonAVR
-    from homeassistant.core import Event, HomeAssistant
+    from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,7 +56,7 @@ class ChannelVolumeManager:
             receiver: DenonAVR instance for communication with the receiver
             zone: Zone name (Main, Zone2, or Zone3)
             hass: Home Assistant instance
-            unique_id_base: Base unique ID for generating media player entity ID
+            unique_id_base: Base unique ID (not used, kept for compatibility)
 
         """
         self.receiver = receiver
@@ -78,27 +75,17 @@ class ChannelVolumeManager:
         # Populated during async_setup
         self.entities: dict[str, object] = {}
 
-        # Track media player state for availability
-        self._media_player_available = True
-        self._media_player_powered_on = True
-
-        # Build media player entity ID for state tracking
-        zone_suffix = f"_{zone.lower()}" if zone != "Main" else ""
-        entity_id_base = unique_id_base.replace("-", "_")
-        self._media_player_entity_id = f"media_player.{entity_id_base}{zone_suffix}"
-
-        # Store state change listener unsubscribe callback
-        self._state_listener_unsub = None
+    @property
+    def is_receiver_available(self) -> bool:
+        """Return True if the receiver is available (responding to network requests)."""
+        # Check if receiver state is not None (None means unavailable/network error)
+        return self.receiver.state is not None
 
     @property
-    def media_player_available(self) -> bool:
-        """Return True if the media player is available."""
-        return self._media_player_available
-
-    @property
-    def media_player_powered_on(self) -> bool:
-        """Return True if the media player is powered on."""
-        return self._media_player_powered_on
+    def is_receiver_powered_on(self) -> bool:
+        """Return True if the receiver is powered on."""
+        # Check if receiver power is ON
+        return self.receiver.power == POWER_ON
 
     async def async_send_cv_command(
         self,
@@ -419,50 +406,6 @@ class ChannelVolumeManager:
 
         return entities
 
-    @callback
-    def _handle_media_player_state_change(self, event: Event) -> None:
-        """Handle media player state changes."""
-        new_state = event.data.get("new_state")
-        if new_state is None:
-            return
-
-        old_available = self._media_player_available
-        old_powered_on = self._media_player_powered_on
-
-        # Update availability based on state
-        self._media_player_available = new_state.state != STATE_UNAVAILABLE
-        self._media_player_powered_on = new_state.state not in (
-            STATE_OFF,
-            STATE_UNAVAILABLE,
-            MediaPlayerState.OFF,
-        )
-
-        # Log state changes
-        if old_available != self._media_player_available:
-            _LOGGER.debug(
-                "Media player %s availability changed: %s -> %s",
-                self._media_player_entity_id,
-                old_available,
-                self._media_player_available,
-            )
-
-        if old_powered_on != self._media_player_powered_on:
-            _LOGGER.debug(
-                "Media player %s power state changed: %s -> %s",
-                self._media_player_entity_id,
-                old_powered_on,
-                self._media_player_powered_on,
-            )
-
-        # Update all entities if state changed
-        if (
-            old_available != self._media_player_available
-            or old_powered_on != self._media_player_powered_on
-        ):
-            for entity in self.entities.values():
-                if hasattr(entity, "async_write_ha_state"):
-                    entity.async_write_ha_state()
-
     async def async_initialize(self) -> None:
         """
         Initialize channel volume manager after entities are added to HA.
@@ -488,27 +431,6 @@ class ChannelVolumeManager:
 
         # Query initial channel values to determine availability
         await self._query_initial_values()
-
-        # Start tracking media player state
-        self._state_listener_unsub = async_track_state_change_event(
-            self.hass,
-            [self._media_player_entity_id],
-            self._handle_media_player_state_change,
-        )
-        _LOGGER.debug(
-            "Started tracking media player state: %s",
-            self._media_player_entity_id,
-        )
-
-    async def async_cleanup(self) -> None:
-        """Clean up resources when manager is being removed."""
-        if self._state_listener_unsub is not None:
-            self._state_listener_unsub()
-            self._state_listener_unsub = None
-            _LOGGER.debug(
-                "Stopped tracking media player state: %s",
-                self._media_player_entity_id,
-            )
 
 
 def protocol_to_db(protocol_value: str, offset: int = 50) -> float:
@@ -633,7 +555,7 @@ class ChannelVolumeNumber(NumberEntity):
 
         """
         # Prevent changes when receiver is off
-        if not self._manager.media_player_powered_on:
+        if not self._manager.is_receiver_powered_on:
             _LOGGER.warning(
                 "Cannot set channel %s volume: receiver is powered off",
                 self._channel,
@@ -660,11 +582,11 @@ class ChannelVolumeNumber(NumberEntity):
         Return True if entity is available.
 
         A channel is considered available if:
-        1. The media player is available (not unavailable)
+        1. The receiver is available (responding to network requests)
         2. We've received at least one CV event for it from the receiver
         """
         return (
-            self._manager.media_player_available
+            self._manager.is_receiver_available
             and self._manager.channel_volumes.get(self._channel) is not None
         )
 
