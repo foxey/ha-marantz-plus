@@ -75,6 +75,9 @@ class ChannelVolumeManager:
         # Populated during async_setup
         self.entities: dict[str, object] = {}
 
+        # Track last known power state to detect changes
+        self._last_power_state: str | None = None
+
     @property
     def is_receiver_available(self) -> bool:
         """Return True if the receiver is available (responding to network requests)."""
@@ -235,6 +238,51 @@ class ChannelVolumeManager:
         except Exception:
             _LOGGER.exception(
                 "Unexpected error in CV callback for zone %s, event %s, parameter '%s'",
+                zone,
+                event,
+                parameter,
+            )
+
+    def _power_callback(
+        self,
+        zone: str,
+        event: str,
+        parameter: str,
+    ) -> None:
+        """
+        Handle power state change events.
+
+        Args:
+            zone: Zone identifier (Main, Zone2, Zone3, or ALL_ZONES)
+            event: Event type (ZM for Main, Z2 for Zone2, Z3 for Zone3)
+            parameter: Power state parameter
+
+        """
+        try:
+            # Validate this is for our zone
+            if zone not in (self.zone, "ALL_ZONES"):
+                return
+
+            # Check if power state changed
+            current_power = self.receiver.power
+            if current_power != self._last_power_state:
+                _LOGGER.debug(
+                    "Power state changed for %s zone %s: %s -> %s",
+                    self.receiver.host,
+                    self.zone,
+                    self._last_power_state,
+                    current_power,
+                )
+                self._last_power_state = current_power
+
+                # Update all channel entities to reflect new availability
+                for entity in self.entities.values():
+                    if hasattr(entity, "async_write_ha_state"):
+                        entity.async_write_ha_state()
+
+        except Exception:
+            _LOGGER.exception(
+                "Error in power callback: zone=%s event=%s param=%s",
                 zone,
                 event,
                 parameter,
@@ -429,6 +477,36 @@ class ChannelVolumeManager:
                 self.zone,
             )
 
+        # Register power state callback
+        try:
+            if hasattr(self.receiver, "register_callback"):
+                # Register for zone-specific power events
+                if self.zone == "Main":
+                    power_event = "ZM"
+                elif self.zone == "Zone2":
+                    power_event = "Z2"
+                elif self.zone == "Zone3":
+                    power_event = "Z3"
+                else:
+                    power_event = "ZM"  # Default to main zone
+
+                self.receiver.register_callback(power_event, self._power_callback)
+                _LOGGER.debug(
+                    "Registered power callback (%s) for %s zone %s",
+                    power_event,
+                    self.receiver.host,
+                    self.zone,
+                )
+
+                # Initialize last power state
+                self._last_power_state = self.receiver.power
+        except Exception:
+            _LOGGER.exception(
+                "Failed to register power callback for %s zone %s",
+                self.receiver.host,
+                self.zone,
+            )
+
         # Query initial channel values to determine availability
         await self._query_initial_values()
 
@@ -554,16 +632,6 @@ class ChannelVolumeNumber(NumberEntity):
             value: Volume in dB (-12.0 to +12.0)
 
         """
-        # Prevent changes when receiver is off
-        if not self._manager.is_receiver_powered_on:
-            _LOGGER.warning(
-                "Cannot set channel %s volume: receiver is powered off",
-                self._channel,
-            )
-            # Force UI to revert to actual value by triggering state update
-            self.async_write_ha_state()
-            return
-
         try:
             await self._manager.async_send_cv_command(self._channel, value)
         except Exception:
@@ -572,8 +640,6 @@ class ChannelVolumeNumber(NumberEntity):
                 self._channel,
                 value,
             )
-            # Force UI to revert to actual value on error
-            self.async_write_ha_state()
 
     @property
     def native_value(self) -> float | None:
@@ -587,10 +653,12 @@ class ChannelVolumeNumber(NumberEntity):
 
         A channel is considered available if:
         1. The receiver is available (responding to network requests)
-        2. We've received at least one CV event for it from the receiver
+        2. The receiver is powered on
+        3. We've received at least one CV event for it from the receiver
         """
         return (
             self._manager.is_receiver_available
+            and self._manager.is_receiver_powered_on
             and self._manager.channel_volumes.get(self._channel) is not None
         )
 
