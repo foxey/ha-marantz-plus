@@ -88,7 +88,17 @@ class ConnectDenonAVR:
         return True
 
     async def async_init_receiver_class(self) -> None:
-        """Initialize the DenonAVR class asynchronously."""
+        """
+        Initialize the DenonAVR class asynchronously.
+
+        Note: When telnet is enabled and the network connection is lost and
+        restored, the denonavr library may log uncaught task exceptions during
+        the reconnection period. This occurs because the library's internal
+        telnet callbacks create background tasks that attempt HTTP requests
+        before the HTTP connection is fully restored. These errors are transient
+        and do not affect functionality - they will resolve once the connection
+        stabilizes. This is a known issue in the denonavr library.
+        """
         receiver = DenonAVR(
             host=self._host,
             show_all_inputs=self._show_all_inputs,

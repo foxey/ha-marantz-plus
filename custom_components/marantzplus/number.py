@@ -51,6 +51,7 @@ async def async_setup_entry(
                 receiver=receiver,
                 zone=zone_name,
                 hass=hass,
+                unique_id_base=unique_id_base,
             )
             managers.append(manager)
 

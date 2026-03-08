@@ -11,6 +11,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
+from denonavr.const import POWER_ON
 from homeassistant.components.number import NumberEntity
 
 from .const import (
@@ -46,6 +47,7 @@ class ChannelVolumeManager:
         receiver: DenonAVR,
         zone: str,
         hass: HomeAssistant,
+        unique_id_base: str,
     ) -> None:
         """
         Initialize the channel volume manager.
@@ -54,6 +56,7 @@ class ChannelVolumeManager:
             receiver: DenonAVR instance for communication with the receiver
             zone: Zone name (Main, Zone2, or Zone3)
             hass: Home Assistant instance
+            unique_id_base: Base unique ID (not used, kept for compatibility)
 
         """
         self.receiver = receiver
@@ -71,6 +74,19 @@ class ChannelVolumeManager:
         # Store entity references for updates
         # Populated during async_setup
         self.entities: dict[str, object] = {}
+
+        # Track last known power state to detect changes
+        self._last_power_state: str | None = None
+
+        # Track receiver availability (network connectivity)
+        # This is updated by the channel entities' async_update method
+        self.receiver_available: bool = True
+
+    @property
+    def is_receiver_powered_on(self) -> bool:
+        """Return True if the receiver is powered on."""
+        # Check if receiver power is ON
+        return self.receiver.power == POWER_ON
 
     async def async_send_cv_command(
         self,
@@ -220,6 +236,51 @@ class ChannelVolumeManager:
         except Exception:
             _LOGGER.exception(
                 "Unexpected error in CV callback for zone %s, event %s, parameter '%s'",
+                zone,
+                event,
+                parameter,
+            )
+
+    def _power_callback(
+        self,
+        zone: str,
+        event: str,
+        parameter: str,
+    ) -> None:
+        """
+        Handle power state change events.
+
+        Args:
+            zone: Zone identifier (Main, Zone2, Zone3, or ALL_ZONES)
+            event: Event type (ZM for Main, Z2 for Zone2, Z3 for Zone3)
+            parameter: Power state parameter
+
+        """
+        try:
+            # Validate this is for our zone
+            if zone not in (self.zone, "ALL_ZONES"):
+                return
+
+            # Check if power state changed
+            current_power = self.receiver.power
+            if current_power != self._last_power_state:
+                _LOGGER.debug(
+                    "Power state changed for %s zone %s: %s -> %s",
+                    self.receiver.host,
+                    self.zone,
+                    self._last_power_state,
+                    current_power,
+                )
+                self._last_power_state = current_power
+
+                # Update all channel entities to reflect new availability
+                for entity in self.entities.values():
+                    if hasattr(entity, "async_schedule_update_ha_state"):
+                        entity.async_schedule_update_ha_state(force_refresh=True)
+
+        except Exception:
+            _LOGGER.exception(
+                "Error in power callback: zone=%s event=%s param=%s",
                 zone,
                 event,
                 parameter,
@@ -414,6 +475,36 @@ class ChannelVolumeManager:
                 self.zone,
             )
 
+        # Register power state callback
+        try:
+            if hasattr(self.receiver, "register_callback"):
+                # Register for zone-specific power events
+                if self.zone == "Main":
+                    power_event = "ZM"
+                elif self.zone == "Zone2":
+                    power_event = "Z2"
+                elif self.zone == "Zone3":
+                    power_event = "Z3"
+                else:
+                    power_event = "ZM"  # Default to main zone
+
+                self.receiver.register_callback(power_event, self._power_callback)
+                _LOGGER.debug(
+                    "Registered power callback (%s) for %s zone %s",
+                    power_event,
+                    self.receiver.host,
+                    self.zone,
+                )
+
+                # Initialize last power state
+                self._last_power_state = self.receiver.power
+        except Exception:
+            _LOGGER.exception(
+                "Failed to register power callback for %s zone %s",
+                self.receiver.host,
+                self.zone,
+            )
+
         # Query initial channel values to determine availability
         await self._query_initial_values()
 
@@ -480,6 +571,9 @@ class ChannelVolumeNumber(NumberEntity):
     Represents a single channel's volume as a number entity with proper
     bounds, step size, and unit of measurement.
     """
+
+    # Enable periodic updates
+    _attr_should_poll = True
 
     def __init__(  # noqa: PLR0913
         self,
@@ -548,6 +642,53 @@ class ChannelVolumeNumber(NumberEntity):
                 value,
             )
 
+    async def async_update(self) -> None:
+        """
+        Update entity state.
+
+        This is called periodically by Home Assistant. We call the receiver's
+        async_update to detect network issues. If it fails, we mark ourselves
+        as unavailable.
+        """
+        # If telnet is healthy, mark as available and skip HTTP update
+        if (
+            self._manager.receiver.telnet_connected
+            and self._manager.receiver.telnet_healthy
+        ):
+            # Telnet is working, so receiver is definitely available
+            if not self._manager.receiver_available:
+                _LOGGER.info(
+                    "Channel %s for %s zone %s is available again (telnet healthy)",
+                    self._channel,
+                    self._manager.receiver.host,
+                    self._manager.zone,
+                )
+                self._manager.receiver_available = True
+            return
+
+        # Try to update receiver state via HTTP - this will fail if network is down
+        try:
+            await self._manager.receiver.async_update()
+            # If update succeeds and we were unavailable, mark as available
+            if not self._manager.receiver_available:
+                _LOGGER.info(
+                    "Channel %s for %s zone %s is available again (HTTP)",
+                    self._channel,
+                    self._manager.receiver.host,
+                    self._manager.zone,
+                )
+                self._manager.receiver_available = True
+        except Exception:  # noqa: BLE001
+            # Network error - mark as unavailable
+            if self._manager.receiver_available:
+                _LOGGER.warning(
+                    "Channel %s for %s zone %s is unavailable (network error)",
+                    self._channel,
+                    self._manager.receiver.host,
+                    self._manager.zone,
+                )
+                self._manager.receiver_available = False
+
     @property
     def native_value(self) -> float | None:
         """Return the current channel volume in dB."""
@@ -558,10 +699,18 @@ class ChannelVolumeNumber(NumberEntity):
         """
         Return True if entity is available.
 
-        A channel is considered available if we've received at least one
-        CV event for it from the receiver.
+        A channel is considered available if:
+        1. The receiver is available (responding to network requests)
+        2. The receiver is powered on
+        3. We've received at least one CV event for it from the receiver
+
+        Note: Receiver availability is tracked by the async_update method
+        which catches network errors.
         """
-        return self._manager.channel_volumes.get(self._channel) is not None
+        receiver_powered_on = self._manager.is_receiver_powered_on
+        has_value = self._manager.channel_volumes.get(self._channel) is not None
+
+        return self._manager.receiver_available and receiver_powered_on and has_value
 
     @property
     def native_min_value(self) -> float:
