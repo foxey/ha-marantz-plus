@@ -358,6 +358,7 @@ class ChannelVolumeManager:
         self,
         device_info: dict,
         unique_id_base: str,
+        device_name: str,
     ) -> list:
         """
         Set up channel volume entities.
@@ -365,6 +366,7 @@ class ChannelVolumeManager:
         Args:
             device_info: Device information for entity registration
             unique_id_base: Base unique ID for entity generation
+            device_name: Device name for entity naming
 
         Returns:
             List of ChannelVolumeNumber entities to add to Home Assistant
@@ -382,6 +384,7 @@ class ChannelVolumeManager:
                 zone=self.zone,
                 device_info=device_info,
                 unique_id_base=unique_id_base,
+                device_name=device_name,
             )
             entities.append(entity)
             self.entities[channel] = entity
@@ -478,13 +481,15 @@ class ChannelVolumeNumber(NumberEntity):
     bounds, step size, and unit of measurement.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         manager: ChannelVolumeManager,
         channel: str,
         zone: str,
         device_info: dict,
+        *,
         unique_id_base: str,
+        device_name: str,
     ) -> None:
         """
         Initialize the channel volume number entity.
@@ -495,6 +500,7 @@ class ChannelVolumeNumber(NumberEntity):
             zone: Zone name (Main, Zone2, or Zone3)
             device_info: Device information for entity registration
             unique_id_base: Base unique ID for entity generation
+            device_name: Device name for entity naming
 
         """
         super().__init__()
@@ -505,15 +511,18 @@ class ChannelVolumeNumber(NumberEntity):
 
         # Generate entity name and ID
         channel_name = CHANNEL_MAP[channel].lower().replace(" ", "_")
-        zone_suffix = "" if zone == "Main" else f"_{zone.lower()}"
 
-        # Entity attributes
-        self._attr_name = (
-            f"{zone if zone != 'Main' else ''} {CHANNEL_MAP[channel]} Volume".strip()
-        )
-        self._attr_unique_id = (
-            f"{unique_id_base}{zone_suffix}_channel_{channel_name}_volume"
-        )
+        # Build entity name with device and zone context
+        if zone == "Main":
+            # Main zone: "Device Front Left Volume"
+            self._attr_name = f"{device_name} {CHANNEL_MAP[channel]} Volume"
+        else:
+            # Other zones: "Device Zone2 Front Left Volume"
+            self._attr_name = f"{device_name} {zone} {CHANNEL_MAP[channel]} Volume"
+
+        # Build unique_id
+        zone_suffix = "" if zone == "Main" else f"_{zone.lower()}"
+        self._attr_unique_id = f"{unique_id_base}{zone_suffix}_{channel_name}_volume"
         self._attr_device_info = device_info
 
         # Set icon based on channel type

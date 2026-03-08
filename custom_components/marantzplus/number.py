@@ -58,6 +58,7 @@ async def async_setup_entry(
             zone_entities = await manager.async_setup(
                 device_info=device_info,
                 unique_id_base=unique_id_base,
+                device_name=receiver.name,
             )
             entities.extend(zone_entities)
 
