@@ -634,6 +634,9 @@ class ChannelVolumeNumber(NumberEntity):
 
         """
         try:
+            # Optimistically update the state before sending the command
+            # This ensures the UI reflects the change immediately
+            self._manager.channel_volumes[self._channel] = value
             await self._manager.async_send_cv_command(self._channel, value)
         except Exception:
             _LOGGER.exception(
