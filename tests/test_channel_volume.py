@@ -45,7 +45,7 @@ class TestProtocolToDb:
         assert protocol_to_db("  53  ") == 3.0
 
     def test_custom_offset(self):
-        assert protocol_to_db("100", offset=100) == 0.0
+        assert protocol_to_db("30", offset=30) == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -389,12 +389,8 @@ class TestSendCvCommand:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock()
 
-        async def fake_open_connection(host, port):
-            return MagicMock(), mock_writer
-
-        with patch("asyncio.open_connection", side_effect=fake_open_connection):
-            with patch("asyncio.wait_for", side_effect=lambda coro, timeout: coro):
-                await manager.async_send_cv_command("FL", 3.0)
+        with patch("asyncio.open_connection", new=AsyncMock(return_value=(MagicMock(), mock_writer))):
+            await manager.async_send_cv_command("FL", 3.0)
 
         assert manager.pending_counters["FL"] == 1
 
@@ -405,12 +401,8 @@ class TestSendCvCommand:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock()
 
-        async def fake_open_connection(host, port):
-            return MagicMock(), mock_writer
-
-        with patch("asyncio.open_connection", side_effect=fake_open_connection):
-            with patch("asyncio.wait_for", side_effect=lambda coro, timeout: coro):
-                await manager.async_send_cv_command("FL", 3.0)
+        with patch("asyncio.open_connection", new=AsyncMock(return_value=(MagicMock(), mock_writer))):
+            await manager.async_send_cv_command("FL", 3.0)
 
         mock_writer.write.assert_called_once_with(b"CVFL 53\r")
 
@@ -421,12 +413,8 @@ class TestSendCvCommand:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock()
 
-        async def fake_open_connection(host, port):
-            return MagicMock(), mock_writer
-
-        with patch("asyncio.open_connection", side_effect=fake_open_connection):
-            with patch("asyncio.wait_for", side_effect=lambda coro, timeout: coro):
-                await manager_zone2.async_send_cv_command("FL", 3.0)
+        with patch("asyncio.open_connection", new=AsyncMock(return_value=(MagicMock(), mock_writer))):
+            await manager_zone2.async_send_cv_command("FL", 3.0)
 
         mock_writer.write.assert_called_once_with(b"Z2CVFL 53\r")
 
@@ -437,25 +425,14 @@ class TestSendCvCommand:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock()
 
-        async def fake_open_connection(host, port):
-            return MagicMock(), mock_writer
-
-        with patch("asyncio.open_connection", side_effect=fake_open_connection):
-            with patch("asyncio.wait_for", side_effect=lambda coro, timeout: coro):
-                await manager.async_send_cv_command("FL", 3.5)
+        with patch("asyncio.open_connection", new=AsyncMock(return_value=(MagicMock(), mock_writer))):
+            await manager.async_send_cv_command("FL", 3.5)
 
         mock_writer.write.assert_called_once_with(b"CVFL 535\r")
 
     async def test_counter_decremented_on_os_error(self, manager):
-        async def failing_open_connection(host, port):
-            raise OSError("connection refused")
-
-        with patch("asyncio.open_connection", side_effect=failing_open_connection):
-            with patch(
-                "asyncio.wait_for",
-                side_effect=lambda coro, timeout: coro,
-            ):
-                await manager.async_send_cv_command("FL", 3.0)
+        with patch("asyncio.open_connection", new=AsyncMock(side_effect=OSError("connection refused"))):
+            await manager.async_send_cv_command("FL", 3.0)
 
         assert manager.pending_counters["FL"] == 0
 
