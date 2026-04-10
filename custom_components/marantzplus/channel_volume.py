@@ -30,6 +30,11 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# Debounce window for coordinated receiver updates.
+# HA polls entities every 10 s; any entity calls within this window
+# after the first successful HTTP update are no-ops.
+_RECEIVER_UPDATE_DEBOUNCE_S: float = 5.0
+
 
 class ChannelVolumeManager:
     """
@@ -79,8 +84,14 @@ class ChannelVolumeManager:
         self._last_power_state: str | None = None
 
         # Track receiver availability (network connectivity)
-        # This is updated by the channel entities' async_update method
+        # This is updated by async_update_receiver
         self.receiver_available: bool = True
+
+        # Coordination for receiver HTTP updates.
+        # Lock ensures only one HTTP call runs at a time; timestamp lets
+        # subsequent callers within the same poll cycle skip redundantly.
+        self._update_lock: asyncio.Lock = asyncio.Lock()
+        self._last_receiver_update: float = 0.0
 
     @property
     def is_receiver_powered_on(self) -> bool:
@@ -508,6 +519,56 @@ class ChannelVolumeManager:
         # Query initial channel values to determine availability
         await self._query_initial_values()
 
+    async def async_update_receiver(self) -> None:
+        """
+        Update receiver state, coordinating across all channel entities.
+
+        Called by every ChannelVolumeNumber.async_update. A lock plus a
+        debounce timestamp guarantee that at most one HTTP call to
+        receiver.async_update() is made per HA poll cycle, regardless of
+        how many channel entities trigger the update simultaneously.
+        """
+        # Fast path: live telnet proves the receiver is reachable.
+        if self.receiver.telnet_connected and self.receiver.telnet_healthy:
+            if not self.receiver_available:
+                _LOGGER.info(
+                    "Receiver %s zone %s is available again (telnet healthy)",
+                    self.receiver.host,
+                    self.zone,
+                )
+                self.receiver_available = True
+            return
+
+        # Skip if another entity already performed the HTTP update recently.
+        loop = asyncio.get_running_loop()
+        if loop.time() - self._last_receiver_update < _RECEIVER_UPDATE_DEBOUNCE_S:
+            return
+
+        async with self._update_lock:
+            # Re-check after acquiring the lock: a concurrent entity may have
+            # just completed the update while we were waiting.
+            if loop.time() - self._last_receiver_update < _RECEIVER_UPDATE_DEBOUNCE_S:
+                return
+
+            try:
+                await self.receiver.async_update()
+                if not self.receiver_available:
+                    _LOGGER.info(
+                        "Receiver %s zone %s is available again (HTTP)",
+                        self.receiver.host,
+                        self.zone,
+                    )
+                    self.receiver_available = True
+                self._last_receiver_update = loop.time()
+            except Exception:  # noqa: BLE001
+                if self.receiver_available:
+                    _LOGGER.warning(
+                        "Receiver %s zone %s is unavailable (network error)",
+                        self.receiver.host,
+                        self.zone,
+                    )
+                self.receiver_available = False
+
 
 def protocol_to_db(protocol_value: str, offset: int = 50) -> float:
     """
@@ -649,48 +710,11 @@ class ChannelVolumeNumber(NumberEntity):
         """
         Update entity state.
 
-        This is called periodically by Home Assistant. We call the receiver's
-        async_update to detect network issues. If it fails, we mark ourselves
-        as unavailable.
+        Delegates to the manager so that all channel entities share a single
+        receiver.async_update() call per HA poll cycle instead of each
+        issuing an independent HTTP request.
         """
-        # If telnet is healthy, mark as available and skip HTTP update
-        if (
-            self._manager.receiver.telnet_connected
-            and self._manager.receiver.telnet_healthy
-        ):
-            # Telnet is working, so receiver is definitely available
-            if not self._manager.receiver_available:
-                _LOGGER.info(
-                    "Channel %s for %s zone %s is available again (telnet healthy)",
-                    self._channel,
-                    self._manager.receiver.host,
-                    self._manager.zone,
-                )
-                self._manager.receiver_available = True
-            return
-
-        # Try to update receiver state via HTTP - this will fail if network is down
-        try:
-            await self._manager.receiver.async_update()
-            # If update succeeds and we were unavailable, mark as available
-            if not self._manager.receiver_available:
-                _LOGGER.info(
-                    "Channel %s for %s zone %s is available again (HTTP)",
-                    self._channel,
-                    self._manager.receiver.host,
-                    self._manager.zone,
-                )
-                self._manager.receiver_available = True
-        except Exception:  # noqa: BLE001
-            # Network error - mark as unavailable
-            if self._manager.receiver_available:
-                _LOGGER.warning(
-                    "Channel %s for %s zone %s is unavailable (network error)",
-                    self._channel,
-                    self._manager.receiver.host,
-                    self._manager.zone,
-                )
-                self._manager.receiver_available = False
+        await self._manager.async_update_receiver()
 
     @property
     def native_value(self) -> float | None:
