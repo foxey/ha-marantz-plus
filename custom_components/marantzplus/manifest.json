@@ -1,14 +1,20 @@
 {
   "domain": "marantzplus",
   "name": "Marantz+",
-  "codeowners": ["@foxey"],
+  "codeowners": [
+    "@foxey"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/foxey/ha-marantz-plus",
   "integration_type": "device",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/foxey/ha-marantz-plus/issues",
-  "loggers": ["marantzplus"],
-  "requirements": ["denonavr==1.2.0"],
+  "loggers": [
+    "marantzplus"
+  ],
+  "requirements": [
+    "denonavr==1.2.0"
+  ],
   "ssdp": [
     {
       "deviceType": "urn:schemas-upnp-org:device:MediaRenderer:1",
@@ -59,5 +65,5 @@
       "manufacturer": "Marantz"
     }
   ],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }
