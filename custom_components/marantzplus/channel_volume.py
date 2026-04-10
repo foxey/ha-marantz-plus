@@ -42,7 +42,7 @@ class ChannelVolumeManager:
 
     This class coordinates channel volume functionality by:
     - Creating and managing ChannelVolumeNumber entities
-    - Sending CV commands via short-lived telnet connections
+    - Sending CV commands via a single persistent telnet connection
     - Receiving CV events via the library's persistent telnet connection
     - Preventing feedback loops using pending counters
     """
@@ -93,11 +93,41 @@ class ChannelVolumeManager:
         self._update_lock: asyncio.Lock = asyncio.Lock()
         self._last_receiver_update: float = 0.0
 
+        # Persistent telnet connection for CV commands.
+        # A single connection is reused across all CV commands instead of
+        # opening a fresh TCP connection per command (which could trigger
+        # rate-limiting on Denon/Marantz receivers).
+        # The lock serializes all telnet I/O to prevent concurrent use.
+        self._cv_reader: asyncio.StreamReader | None = None
+        self._cv_writer: asyncio.StreamWriter | None = None
+        self._cv_lock: asyncio.Lock = asyncio.Lock()
+
     @property
     def is_receiver_powered_on(self) -> bool:
         """Return True if the receiver is powered on."""
         # Check if receiver power is ON
         return self.receiver.power == POWER_ON
+
+    async def _ensure_cv_connection(
+        self,
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        """Return the persistent CV telnet connection, reconnecting if needed.
+
+        Must be called with ``_cv_lock`` held.
+        """
+        if self._cv_writer is not None and not self._cv_writer.is_closing():
+            assert self._cv_reader is not None  # noqa: S101
+            return self._cv_reader, self._cv_writer
+
+        self._cv_reader, self._cv_writer = await asyncio.wait_for(
+            asyncio.open_connection(self.receiver.host, CV_TELNET_PORT),
+            timeout=CV_TELNET_TIMEOUT,
+        )
+        _LOGGER.debug(
+            "Opened persistent CV telnet connection to %s",
+            self.receiver.host,
+        )
+        return self._cv_reader, self._cv_writer
 
     async def async_send_cv_command(
         self,
@@ -106,6 +136,10 @@ class ChannelVolumeManager:
     ) -> None:
         """
         Send a channel volume command to the receiver.
+
+        Reuses the persistent telnet connection held by the manager.
+        On I/O error the connection is discarded; the next command will
+        reconnect automatically via ``_ensure_cv_connection``.
 
         Args:
             channel: Channel code (FL, FR, C, SL, SR, SW)
@@ -120,47 +154,29 @@ class ChannelVolumeManager:
         protocol_value = db_to_protocol(value)
         command = f"{zone_prefix}CV{channel} {protocol_value}\r"
 
-        _reader = None
-        writer = None
-        try:
-            # Create short-lived telnet connection using asyncio streams
-            _reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(
+        async with self._cv_lock:
+            try:
+                _, writer = await self._ensure_cv_connection()
+                writer.write(command.encode("ascii"))
+                await writer.drain()
+
+                _LOGGER.debug(
+                    "Sent CV command to %s: %s",
                     self.receiver.host,
-                    CV_TELNET_PORT,
-                ),
-                timeout=CV_TELNET_TIMEOUT,
-            )
+                    command.strip(),
+                )
 
-            # Send CV command
-            writer.write(command.encode("ascii"))
-            await writer.drain()
-
-            _LOGGER.debug(
-                "Sent CV command to %s: %s",
-                self.receiver.host,
-                command.strip(),
-            )
-
-        except (TimeoutError, OSError, ConnectionError):
-            _LOGGER.exception(
-                "Failed to send CV command to %s for channel %s",
-                self.receiver.host,
-                channel,
-            )
-            # Decrement counter on error
-            self.pending_counters[channel] -= 1
-
-        finally:
-            # Close connection if it was established
-            if writer is not None:
-                try:
-                    writer.close()
-                    await writer.wait_closed()
-                except OSError:
-                    _LOGGER.debug("Error closing telnet connection")
-                except Exception:  # noqa: BLE001
-                    _LOGGER.debug("Unexpected error closing telnet connection")
+            except (TimeoutError, OSError, ConnectionError):
+                _LOGGER.exception(
+                    "Failed to send CV command to %s for channel %s",
+                    self.receiver.host,
+                    channel,
+                )
+                # Decrement counter on error
+                self.pending_counters[channel] -= 1
+                # Discard the broken connection; next call will reconnect.
+                self._cv_writer = None
+                self._cv_reader = None
 
     def _cv_callback(
         self,
@@ -325,106 +341,90 @@ class ChannelVolumeManager:
         zone_prefix = ZONE_PREFIXES.get(self.zone, "")
         query_command = f"{zone_prefix}CV?\r"
 
-        _reader = None
-        writer = None
-        try:
-            # Create short-lived telnet connection
-            _reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(
-                    self.receiver.host,
-                    CV_TELNET_PORT,
-                ),
-                timeout=CV_TELNET_TIMEOUT,
-            )
+        async with self._cv_lock:
+            try:
+                reader, writer = await self._ensure_cv_connection()
 
-            # Send CV? query
-            writer.write(query_command.encode("ascii"))
-            await writer.drain()
+                # Send CV? query
+                writer.write(query_command.encode("ascii"))
+                await writer.drain()
 
-            # Read response with timeout
-            response_data = await asyncio.wait_for(
-                _reader.read(4096),
-                timeout=CV_TELNET_TIMEOUT,
-            )
-            response = response_data.decode("ascii", errors="replace")
+                # Read response with timeout
+                response_data = await asyncio.wait_for(
+                    reader.read(4096),
+                    timeout=CV_TELNET_TIMEOUT,
+                )
+                response = response_data.decode("ascii", errors="replace")
 
-            # Parse response and update channel values
-            # Response format: "CVFL 50\rCVFR 50\rCVC 48\r"
-            for raw_line in response.split("\r"):
-                parsed_line = raw_line.strip()
-                if not parsed_line:
-                    continue
+                # Parse response and update channel values
+                # Response format: "CVFL 50\rCVFR 50\rCVC 48\r"
+                for raw_line in response.split("\r"):
+                    parsed_line = raw_line.strip()
+                    if not parsed_line:
+                        continue
 
-                # Remove zone prefix if present
-                if parsed_line.startswith(zone_prefix + "CV"):
-                    # Remove zone prefix and "CV"
-                    parsed_line = parsed_line[len(zone_prefix) + 2 :]
-                elif parsed_line.startswith("CV"):
-                    parsed_line = parsed_line[2:]  # Remove "CV"
+                    # Remove zone prefix if present
+                    if parsed_line.startswith(zone_prefix + "CV"):
+                        # Remove zone prefix and "CV"
+                        parsed_line = parsed_line[len(zone_prefix) + 2 :]
+                    elif parsed_line.startswith("CV"):
+                        parsed_line = parsed_line[2:]  # Remove "CV"
+                    else:
+                        continue
+
+                    # Parse "FL 50" or "FR 535"
+                    parts = parsed_line.split()
+                    if len(parts) >= expected_parts:
+                        channel_code = parts[0]
+                        protocol_value = parts[1]
+
+                        if channel_code in self.channel_volumes:
+                            try:
+                                db_value = protocol_to_db(protocol_value)
+                                self.channel_volumes[channel_code] = db_value
+                                _LOGGER.debug(
+                                    "Initial value for %s channel %s: %.1f dB",
+                                    self.zone,
+                                    channel_code,
+                                    db_value,
+                                )
+                            except (ValueError, IndexError) as err:
+                                _LOGGER.warning(
+                                    "Failed to parse initial CV value '%s' for "
+                                    "channel %s: %s",
+                                    protocol_value,
+                                    channel_code,
+                                    err,
+                                )
+
+                # Log which channels are available
+                available_channels = [
+                    ch for ch, val in self.channel_volumes.items() if val is not None
+                ]
+                if available_channels:
+                    _LOGGER.info(
+                        "Active channels for %s zone %s: %s",
+                        self.receiver.host,
+                        self.zone,
+                        ", ".join(available_channels),
+                    )
                 else:
-                    continue
+                    _LOGGER.warning(
+                        "No active channels detected for %s zone %s",
+                        self.receiver.host,
+                        self.zone,
+                    )
 
-                # Parse "FL 50" or "FR 535"
-                parts = parsed_line.split()
-                if len(parts) >= expected_parts:
-                    channel_code = parts[0]
-                    protocol_value = parts[1]
-
-                    if channel_code in self.channel_volumes:
-                        try:
-                            db_value = protocol_to_db(protocol_value)
-                            self.channel_volumes[channel_code] = db_value
-                            _LOGGER.debug(
-                                "Initial value for %s channel %s: %.1f dB",
-                                self.zone,
-                                channel_code,
-                                db_value,
-                            )
-                        except (ValueError, IndexError) as err:
-                            _LOGGER.warning(
-                                "Failed to parse initial CV value '%s' for "
-                                "channel %s: %s",
-                                protocol_value,
-                                channel_code,
-                                err,
-                            )
-
-            # Log which channels are available
-            available_channels = [
-                ch for ch, val in self.channel_volumes.items() if val is not None
-            ]
-            if available_channels:
-                _LOGGER.info(
-                    "Active channels for %s zone %s: %s",
-                    self.receiver.host,
-                    self.zone,
-                    ", ".join(available_channels),
-                )
-            else:
+            except (TimeoutError, OSError, ConnectionError) as err:
                 _LOGGER.warning(
-                    "No active channels detected for %s zone %s",
+                    "Failed to query initial channel values for %s zone %s: %s",
                     self.receiver.host,
                     self.zone,
+                    err,
                 )
-
-        except (TimeoutError, OSError, ConnectionError) as err:
-            _LOGGER.warning(
-                "Failed to query initial channel values for %s zone %s: %s",
-                self.receiver.host,
-                self.zone,
-                err,
-            )
-
-        finally:
-            # Close connection if it was established
-            if writer is not None:
-                try:
-                    writer.close()
-                    await writer.wait_closed()
-                except OSError:
-                    _LOGGER.debug("Error closing telnet connection")
-                except Exception:  # noqa: BLE001
-                    _LOGGER.debug("Unexpected error closing telnet connection")
+                # Discard the broken connection; next call will reconnect.
+                self._cv_writer = None
+                self._cv_reader = None
 
     async def async_setup(
         self,
@@ -568,6 +568,32 @@ class ChannelVolumeManager:
                         self.zone,
                     )
                 self.receiver_available = False
+
+    async def async_close(self) -> None:
+        """Close the persistent CV telnet connection idempotently.
+
+        Safe to call multiple times; subsequent calls are no-ops once the
+        connection has already been closed.
+        """
+        async with self._cv_lock:
+            if self._cv_writer is None:
+                return
+            try:
+                self._cv_writer.close()
+                await self._cv_writer.wait_closed()
+            except OSError:
+                _LOGGER.debug(
+                    "Error closing CV telnet connection to %s",
+                    self.receiver.host,
+                )
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug(
+                    "Unexpected error closing CV telnet connection to %s",
+                    self.receiver.host,
+                )
+            finally:
+                self._cv_writer = None
+                self._cv_reader = None
 
 
 def protocol_to_db(protocol_value: str, offset: int = 50) -> float:
@@ -715,6 +741,14 @@ class ChannelVolumeNumber(NumberEntity):
         issuing an independent HTTP request.
         """
         await self._manager.async_update_receiver()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Close the persistent CV telnet connection when this entity is unloaded.
+
+        All channel entities share one manager; the first removal closes the
+        connection and subsequent calls are no-ops (``async_close`` is idempotent).
+        """
+        await self._manager.async_close()
 
     @property
     def native_value(self) -> float | None:
