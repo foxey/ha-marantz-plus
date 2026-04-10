@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.marantzplus.channel_volume import (
-    ChannelVolumeManager,
     ChannelVolumeNumber,
     db_to_protocol,
     protocol_to_db,
