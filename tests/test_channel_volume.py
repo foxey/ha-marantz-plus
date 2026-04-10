@@ -94,7 +94,7 @@ class TestRoundtrip:
 
 class TestCvCallback:
     def test_pending_counter_blocks_update(self, manager_with_entities):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
         manager.pending_counters["FL"] = 1
 
         manager._cv_callback("Main", "CV", "FL 53")
@@ -103,7 +103,7 @@ class TestCvCallback:
         assert manager.pending_counters["FL"] == 0
 
     def test_counter_decremented_once(self, manager_with_entities):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
         manager.pending_counters["FL"] = 2
 
         manager._cv_callback("Main", "CV", "FL 53")
@@ -119,7 +119,7 @@ class TestCvCallback:
         entities["FL"].async_write_ha_state.assert_called_once()
 
     def test_channel_specific_counters(self, manager_with_entities):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
         manager.pending_counters["FL"] = 1
         manager.pending_counters["FR"] = 0
 
@@ -130,7 +130,7 @@ class TestCvCallback:
         entities["FR"].async_write_ha_state.assert_called_once()
 
     def test_wrong_zone_ignored(self, manager_with_entities):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
 
         manager._cv_callback("Zone2", "CV", "FL 53")
 
@@ -138,7 +138,7 @@ class TestCvCallback:
             entity.async_write_ha_state.assert_not_called()
 
     def test_all_zones_accepted(self, manager_with_entities):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
 
         manager._cv_callback("ALL_ZONES", "CV", "FL 53")
 
@@ -146,7 +146,7 @@ class TestCvCallback:
         assert manager.channel_volumes["FL"] == 3.0
 
     def test_end_parameter_ignored(self, manager_with_entities):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
 
         manager._cv_callback("Main", "CV", "END")
 
@@ -154,7 +154,7 @@ class TestCvCallback:
             entity.async_write_ha_state.assert_not_called()
 
     def test_empty_parameter_ignored(self, manager_with_entities):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
 
         manager._cv_callback("Main", "CV", "  ")
 
@@ -162,7 +162,7 @@ class TestCvCallback:
             entity.async_write_ha_state.assert_not_called()
 
     def test_malformed_parameter_ignored(self, manager_with_entities):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
 
         manager._cv_callback("Main", "CV", "FL")  # Missing value
 
@@ -170,7 +170,7 @@ class TestCvCallback:
             entity.async_write_ha_state.assert_not_called()
 
     def test_unknown_channel_ignored(self, manager_with_entities):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
 
         manager._cv_callback("Main", "CV", "XX 50")
 
@@ -178,7 +178,7 @@ class TestCvCallback:
             entity.async_write_ha_state.assert_not_called()
 
     def test_half_db_value_parsed(self, manager_with_entities):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
 
         manager._cv_callback("Main", "CV", "FL 535")
 
@@ -186,7 +186,7 @@ class TestCvCallback:
         entities["FL"].async_write_ha_state.assert_called_once()
 
     def test_volume_state_updated(self, manager_with_entities):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
 
         manager._cv_callback("Main", "CV", "FR 495")
 
@@ -219,7 +219,7 @@ class TestCvCallback:
 
 class TestPowerCallback:
     def test_power_change_triggers_entity_update(self, manager_with_entities, mock_receiver):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
         mock_receiver.power = "STANDBY"
         manager._last_power_state = POWER_ON
 
@@ -231,7 +231,7 @@ class TestPowerCallback:
             )
 
     def test_no_change_no_update(self, manager_with_entities, mock_receiver):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
         mock_receiver.power = POWER_ON
         manager._last_power_state = POWER_ON
 
@@ -249,7 +249,7 @@ class TestPowerCallback:
         assert manager._last_power_state == "STANDBY"
 
     def test_wrong_zone_ignored(self, manager_with_entities):
-        manager, entities = manager_with_entities
+        manager, _ = manager_with_entities
         manager._last_power_state = POWER_ON
 
         manager._power_callback("Zone2", "Z2", "STANDBY")
@@ -435,7 +435,7 @@ class TestSendCvCommand:
         assert manager.pending_counters["FL"] == 0
 
     async def test_counter_decremented_on_timeout(self, manager):
-        async def timing_out(*args, **kwargs):
+        async def timing_out(*_args, **_kwargs):
             raise TimeoutError
 
         with patch(
