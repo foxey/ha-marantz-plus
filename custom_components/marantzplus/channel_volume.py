@@ -111,7 +111,8 @@ class ChannelVolumeManager:
     async def _ensure_cv_connection(
         self,
     ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-        """Return the persistent CV telnet connection, reconnecting if needed.
+        """
+        Return the persistent CV telnet connection, reconnecting if needed.
 
         Must be called with ``_cv_lock`` held.
         """
@@ -332,7 +333,7 @@ class ChannelVolumeManager:
         )
         return list(CHANNEL_MAP.keys())
 
-    async def _query_initial_values(self) -> None:  # noqa: PLR0912
+    async def _query_initial_values(self) -> None:
         """Query receiver for initial channel values to determine availability."""
         # Expected parts count for CV response
         expected_parts = 2
@@ -570,7 +571,8 @@ class ChannelVolumeManager:
                 self.receiver_available = False
 
     async def async_close(self) -> None:
-        """Close the persistent CV telnet connection idempotently.
+        """
+        Close the persistent CV telnet connection idempotently.
 
         Safe to call multiple times; subsequent calls are no-ops once the
         connection has already been closed.
@@ -743,7 +745,8 @@ class ChannelVolumeNumber(NumberEntity):
         await self._manager.async_update_receiver()
 
     async def async_will_remove_from_hass(self) -> None:
-        """Close the persistent CV telnet connection when this entity is unloaded.
+        """
+        Close the persistent CV telnet connection when this entity is unloaded.
 
         All channel entities share one manager; the first removal closes the
         connection and subsequent calls are no-ops (``async_close`` is idempotent).
