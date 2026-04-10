@@ -50,10 +50,12 @@ sys.modules["denonavr.const"] = _denonavr_const
 # Python will still find and load individual submodules (const, channel_volume)
 # from the real source directory via __path__.
 # ---------------------------------------------------------------------------
-_pkg_path = ["/workspace/ha-marantz-plus/custom_components/marantzplus"]
+import pathlib as _pathlib
+_repo_root = _pathlib.Path(__file__).parent.parent
+_pkg_path = [str(_repo_root / "custom_components" / "marantzplus")]
 
 _cc_mod = types.ModuleType("custom_components")
-_cc_mod.__path__ = ["/workspace/ha-marantz-plus/custom_components"]  # type: ignore[attr-defined]
+_cc_mod.__path__ = [str(_repo_root / "custom_components")]  # type: ignore[attr-defined]
 sys.modules.setdefault("custom_components", _cc_mod)
 
 _pkg_mod = types.ModuleType("custom_components.marantzplus")
