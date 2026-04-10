@@ -20,6 +20,9 @@ ignore = [
     "ISC001", # incompatible with formatter
 ]
 
+[lint.per-file-ignores]
+"tests/**" = ["ANN", "D", "S101", "E402", "E501"]
+
 [lint.flake8-pytest-style]
 fixture-parentheses = false
 
