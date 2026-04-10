@@ -218,7 +218,9 @@ class TestCvCallback:
 
 
 class TestPowerCallback:
-    def test_power_change_triggers_entity_update(self, manager_with_entities, mock_receiver):
+    def test_power_change_triggers_entity_update(
+        self, manager_with_entities, mock_receiver
+    ):
         manager, entities = manager_with_entities
         mock_receiver.power = "STANDBY"
         manager._last_power_state = POWER_ON
@@ -387,7 +389,10 @@ class TestSendCvCommand:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock()
 
-        with patch("asyncio.open_connection", new=AsyncMock(return_value=(MagicMock(), mock_writer))):
+        with patch(
+            "asyncio.open_connection",
+            new=AsyncMock(return_value=(MagicMock(), mock_writer)),
+        ):
             await manager.async_send_cv_command("FL", 3.0)
 
         assert manager.pending_counters["FL"] == 1
@@ -399,7 +404,10 @@ class TestSendCvCommand:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock()
 
-        with patch("asyncio.open_connection", new=AsyncMock(return_value=(MagicMock(), mock_writer))):
+        with patch(
+            "asyncio.open_connection",
+            new=AsyncMock(return_value=(MagicMock(), mock_writer)),
+        ):
             await manager.async_send_cv_command("FL", 3.0)
 
         mock_writer.write.assert_called_once_with(b"CVFL 53\r")
@@ -411,7 +419,10 @@ class TestSendCvCommand:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock()
 
-        with patch("asyncio.open_connection", new=AsyncMock(return_value=(MagicMock(), mock_writer))):
+        with patch(
+            "asyncio.open_connection",
+            new=AsyncMock(return_value=(MagicMock(), mock_writer)),
+        ):
             await manager_zone2.async_send_cv_command("FL", 3.0)
 
         mock_writer.write.assert_called_once_with(b"Z2CVFL 53\r")
@@ -423,13 +434,19 @@ class TestSendCvCommand:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock()
 
-        with patch("asyncio.open_connection", new=AsyncMock(return_value=(MagicMock(), mock_writer))):
+        with patch(
+            "asyncio.open_connection",
+            new=AsyncMock(return_value=(MagicMock(), mock_writer)),
+        ):
             await manager.async_send_cv_command("FL", 3.5)
 
         mock_writer.write.assert_called_once_with(b"CVFL 535\r")
 
     async def test_counter_decremented_on_os_error(self, manager):
-        with patch("asyncio.open_connection", new=AsyncMock(side_effect=OSError("connection refused"))):
+        with patch(
+            "asyncio.open_connection",
+            new=AsyncMock(side_effect=OSError("connection refused")),
+        ):
             await manager.async_send_cv_command("FL", 3.0)
 
         assert manager.pending_counters["FL"] == 0
