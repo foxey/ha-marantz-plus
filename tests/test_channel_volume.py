@@ -10,7 +10,6 @@ from custom_components.marantzplus.channel_volume import (
     db_to_protocol,
     protocol_to_db,
 )
-from custom_components.marantzplus.const import CHANNEL_MAP
 
 try:
     from denonavr.const import POWER_ON
