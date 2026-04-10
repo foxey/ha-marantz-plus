@@ -15,6 +15,7 @@ import pytest
 # These stubs must be in sys.modules BEFORE any custom_components import.
 # ---------------------------------------------------------------------------
 
+
 # homeassistant.components.number
 class _NumberEntity:
     """Minimal NumberEntity base class for testing."""
@@ -33,7 +34,9 @@ _ha_number_mod = types.ModuleType("homeassistant.components.number")
 _ha_number_mod.NumberEntity = _NumberEntity
 
 sys.modules.setdefault("homeassistant", types.ModuleType("homeassistant"))
-sys.modules.setdefault("homeassistant.components", types.ModuleType("homeassistant.components"))
+sys.modules.setdefault(
+    "homeassistant.components", types.ModuleType("homeassistant.components")
+)
 sys.modules["homeassistant.components.number"] = _ha_number_mod
 sys.modules.setdefault("homeassistant.core", types.ModuleType("homeassistant.core"))
 
@@ -51,6 +54,7 @@ sys.modules["denonavr.const"] = _denonavr_const
 # from the real source directory via __path__.
 # ---------------------------------------------------------------------------
 import pathlib as _pathlib
+
 _repo_root = _pathlib.Path(__file__).parent.parent
 _pkg_path = [str(_repo_root / "custom_components" / "marantzplus")]
 
